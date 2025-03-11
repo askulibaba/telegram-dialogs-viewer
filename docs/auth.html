@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Авторизация...</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <script>
+        // Получаем параметры авторизации из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const authData = {
+            id: urlParams.get('id'),
+            first_name: urlParams.get('first_name'),
+            last_name: urlParams.get('last_name'),
+            username: urlParams.get('username'),
+            photo_url: urlParams.get('photo_url'),
+            auth_date: urlParams.get('auth_date'),
+            hash: urlParams.get('hash')
+        };
+
+        // Сохраняем данные авторизации
+        localStorage.setItem('telegram_auth', JSON.stringify(authData));
+
+        // Отправляем данные в бот
+        const tg = window.Telegram.WebApp;
+        tg.sendData(JSON.stringify({
+            type: 'auth',
+            data: authData
+        }));
+
+        // Перенаправляем на основную страницу
+        window.location.href = 'index.html';
+    </script>
+</body>
+</html> 

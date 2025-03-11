@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Авторизация - Энигма</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+            background-color: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #000);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+            padding: 20px;
+        }
+        h1 {
+            color: var(--tg-theme-text-color, #333);
+            margin-bottom: 24px;
+            font-size: 24px;
+        }
+        .login-container {
+            margin: 20px 0;
+        }
+        .description {
+            color: var(--tg-theme-hint-color, #666);
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Шифрование Энигма</h1>
+        <p class="description">
+            Для использования приложения необходимо авторизоваться через Telegram.
+            Это позволит нам сохранить ваши настройки и обеспечить безопасность данных.
+        </p>
+        <div class="login-container">
+            <script async src="https://telegram.org/js/telegram-widget.js?22"
+                data-telegram-login="EnigmaSecretMessages_bot"
+                data-size="large"
+                data-auth-url="https://askulibaba.github.io/enigma-telegram-app/auth.html"
+                data-request-access="write">
+            </script>
+        </div>
+    </div>
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // Проверяем, есть ли сохраненная сессия
+        const session = localStorage.getItem('telegram_auth');
+        if (session) {
+            // Если сессия есть, перенаправляем на основную страницу
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html> 

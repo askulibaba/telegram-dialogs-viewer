@@ -62,10 +62,30 @@
         .tg-share {
             margin-top: 16px;
         }
+        .user-info {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: var(--tg-theme-secondary-bg-color, #f8f9fa);
+            border-radius: 8px;
+        }
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 12px;
+        }
+        .user-name {
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <div id="userInfo" class="user-info">
+            <!-- Информация о пользователе будет добавлена через JavaScript -->
+        </div>
         <h1>Шифрование Энигма</h1>
         <div class="form-group">
             <label for="inputText">Введите текст для шифрования:</label>
@@ -87,5 +107,19 @@
         </div>
     </div>
     <script src="enigma.js"></script>
+    <script>
+        // Проверяем авторизацию
+        const authData = localStorage.getItem('telegram_auth');
+        if (!authData) {
+            window.location.href = 'login.html';
+        } else {
+            const userData = JSON.parse(authData);
+            const userInfo = document.getElementById('userInfo');
+            userInfo.innerHTML = `
+                ${userData.photo_url ? `<img src="${userData.photo_url}" class="user-avatar" alt="Avatar">` : ''}
+                <div class="user-name">${userData.first_name} ${userData.last_name || ''}</div>
+            `;
+        }
+    </script>
 </body>
 </html> 
