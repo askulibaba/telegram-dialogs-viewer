@@ -11,12 +11,19 @@ from bot.utils import init_telegram_client, get_dialogs, verify_telegram_auth
 # Загружаем переменные окружения
 load_dotenv()
 
+# Настройка уровня логирования в зависимости от переменной DEBUG
+debug_mode = os.getenv('DEBUG', 'false').lower() == 'true'
+log_level = logging.DEBUG if debug_mode else logging.INFO
+
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+if debug_mode:
+    logger.debug("🔍 Режим отладки включен")
 
 # Проверка конфигурации
 required_vars = ['BOT_TOKEN', 'API_ID', 'API_HASH', 'APP_URL']
@@ -113,7 +120,8 @@ def run_flask():
     """Запуск Flask сервера"""
     app.run(
         host=os.getenv('HOST', '0.0.0.0'),
-        port=int(os.getenv('PORT', 5000))
+        port=int(os.getenv('PORT', 5000)),
+        debug=debug_mode
     )
 
 def run_bot():
@@ -129,5 +137,6 @@ if __name__ == '__main__':
     logger.info("🚀 Запуск бота и веб-сервера...")
     logger.info(f"Конфигурация:")
     logger.info(f"APP_URL: {os.getenv('APP_URL')}")
+    logger.info(f"Режим отладки: {'Включен' if debug_mode else 'Выключен'}")
     
     run_bot() 
