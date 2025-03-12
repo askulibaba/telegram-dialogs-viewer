@@ -68,11 +68,16 @@ def send_static(path):
 async def webhook():
     """Обработчик вебхука от Telegram"""
     try:
+        logger.info("Получен webhook запрос")
+        logger.info(f"Данные запроса: {request.json}")
+        
         update = types.Update(**request.json)
         await dp.process_update(update)
+        
+        logger.info("Webhook запрос обработан успешно")
         return jsonify({'ok': True})
     except Exception as e:
-        logger.error(f"Ошибка обработки вебхука: {str(e)}")
+        logger.error(f"Ошибка обработки вебхука: {str(e)}", exc_info=True)
         return jsonify({'ok': False, 'error': str(e)})
 
 @app.route('/api/auth', methods=['POST'])
@@ -208,26 +213,45 @@ def verify_telegram_data(data):
 async def start(message: types.Message):
     """Обработчик команды /start"""
     try:
+        logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton(
             text="Открыть список диалогов",
             web_app=WebAppInfo(url=WEBAPP_URL)
         ))
         
+        logger.info(f"Отправляем приветственное сообщение с WEBAPP_URL: {WEBAPP_URL}")
         await message.answer(
             "Привет! Это бот для просмотра диалогов Telegram.\n"
             "Нажмите на кнопку ниже, чтобы открыть приложение.",
             reply_markup=markup
         )
+        logger.info("Приветственное сообщение отправлено успешно")
     except Exception as e:
-        logger.error(f"Ошибка в обработчике /start: {str(e)}")
+        logger.error(f"Ошибка в обработчике /start: {str(e)}", exc_info=True)
         await message.answer("Произошла ошибка при запуске бота. Попробуйте позже.")
 
 async def on_startup(dp):
     """Действия при запуске бота"""
-    logger.info("Настройка вебхука...")
-    await bot.set_webhook(WEBHOOK_URL)
-    logger.info(f"Вебхук установлен на {WEBHOOK_URL}")
+    logger.info("Начало настройки вебхука...")
+    logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
+    logger.info(f"APP_URL: {APP_URL}")
+    
+    try:
+        webhook_info = await bot.get_webhook_info()
+        logger.info(f"Текущие настройки вебхука: {webhook_info}")
+        
+        await bot.delete_webhook()
+        logger.info("Старый вебхук удален")
+        
+        await bot.set_webhook(WEBHOOK_URL)
+        logger.info(f"Новый вебхук установлен на {WEBHOOK_URL}")
+        
+        webhook_info = await bot.get_webhook_info()
+        logger.info(f"Проверка настроек вебхука: {webhook_info}")
+    except Exception as e:
+        logger.error(f"Ошибка при настройке вебхука: {str(e)}", exc_info=True)
+        raise
 
 async def on_shutdown(dp):
     """Действия при остановке бота"""
@@ -243,6 +267,14 @@ if __name__ == '__main__':
     
     # Запускаем приложение
     logger.info("🚀 Запуск бота и веб-сервера...")
+    logger.info(f"Конфигурация:")
+    logger.info(f"HOST: {HOST}")
+    logger.info(f"PORT: {PORT}")
+    logger.info(f"WEBHOOK_PATH: {WEBHOOK_PATH}")
+    logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
+    logger.info(f"APP_URL: {APP_URL}")
+    logger.info(f"WEBAPP_URL: {WEBAPP_URL}")
+    
     executor.start_webhook(
         dispatcher=dp,
         webhook_path=WEBHOOK_PATH,
