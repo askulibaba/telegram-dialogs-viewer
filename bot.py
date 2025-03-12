@@ -31,7 +31,10 @@ API_ID = os.getenv('API_ID')
 API_HASH = os.getenv('API_HASH')
 PORT = int(os.getenv('PORT', 5000))
 HOST = os.getenv('HOST', '0.0.0.0')
-WEBAPP_URL = os.getenv('WEBAPP_URL', f'https://{os.getenv("RAILWAY_STATIC_URL", "localhost:5000")}/login.html')
+APP_URL = os.getenv('APP_URL', f'https://{os.getenv("RAILWAY_STATIC_URL", "localhost:5000")}')
+WEBAPP_URL = f"{APP_URL}/login.html"
+WEBHOOK_PATH = f'/webhook/{BOT_TOKEN}'
+WEBHOOK_URL = f'{APP_URL}{WEBHOOK_PATH}'
 
 # Проверка конфигурации
 if not all([BOT_TOKEN, API_ID, API_HASH]):
@@ -61,6 +64,17 @@ def index():
 def send_static(path):
     return send_from_directory(app.static_folder, path)
 
+@app.route(WEBHOOK_PATH, methods=['POST'])
+async def webhook():
+    """Обработчик вебхука от Telegram"""
+    try:
+        update = types.Update(**request.json)
+        await dp.process_update(update)
+        return jsonify({'ok': True})
+    except Exception as e:
+        logger.error(f"Ошибка обработки вебхука: {str(e)}")
+        return jsonify({'ok': False, 'error': str(e)})
+
 @app.route('/api/auth', methods=['POST'])
 def auth():
     try:
@@ -80,7 +94,7 @@ def auth():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/dialogs', methods=['GET'])
-async def get_dialogs():
+async def get_dialogs_route():
     try:
         user_id = request.args.get('user_id')
         if not user_id or user_id not in sessions:
@@ -209,22 +223,32 @@ async def start(message: types.Message):
         logger.error(f"Ошибка в обработчике /start: {str(e)}")
         await message.answer("Произошла ошибка при запуске бота. Попробуйте позже.")
 
-def run_flask():
-    """Запуск Flask сервера"""
-    app.run(host=HOST, port=PORT)
+async def on_startup(dp):
+    """Действия при запуске бота"""
+    logger.info("Настройка вебхука...")
+    await bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"Вебхук установлен на {WEBHOOK_URL}")
 
-def run_bot():
-    """Запуск бота"""
-    executor.start_polling(dp, skip_updates=True)
+async def on_shutdown(dp):
+    """Действия при остановке бота"""
+    logger.info("Удаление вебхука...")
+    await bot.delete_webhook()
+    logger.info("Закрытие соединений...")
+    await dp.storage.close()
+    await dp.storage.wait_closed()
 
 if __name__ == '__main__':
     # Создаем директорию для сессий, если её нет
     os.makedirs('sessions', exist_ok=True)
     
-    # Запускаем Flask в отдельном потоке
-    flask_thread = Thread(target=run_flask)
-    flask_thread.start()
-    
-    # Запускаем бота
+    # Запускаем приложение
     logger.info("🚀 Запуск бота и веб-сервера...")
-    run_bot() 
+    executor.start_webhook(
+        dispatcher=dp,
+        webhook_path=WEBHOOK_PATH,
+        on_startup=on_startup,
+        on_shutdown=on_shutdown,
+        skip_updates=True,
+        host=HOST,
+        port=PORT
+    ) 
