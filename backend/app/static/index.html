@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Dialogs Viewer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">Telegram Dialogs Viewer</div>
+            <div id="user-info" style="display: none;">
+                <button id="logout-button" class="auth-button">Выйти</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section id="auth-section" class="auth-section">
+            <div class="auth-card">
+                <h2>Авторизация</h2>
+                <p>Для просмотра диалогов необходимо авторизоваться через Telegram.</p>
+                <div class="auth-methods">
+                    <div id="telegram-login">
+                        <script async src="https://telegram.org/js/telegram-widget.js?22" 
+                            data-telegram-login="TelegramDialogsViewerBot" 
+                            data-size="large" 
+                            data-auth-url="/api/v1/auth/telegram" 
+                            data-request-access="write"
+                            data-onauth="telegramLogin(user)">
+                        </script>
+                    </div>
+                    <p>или</p>
+                    <a href="tg://resolve?domain=TelegramDialogsViewerBot" class="auth-button telegram-button">
+                        Открыть бота в Telegram
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section id="dialogs-section" class="dialogs-section" style="display: none;">
+            <h2>Ваши диалоги</h2>
+            <div id="error-message" class="error-message" style="display: none;"></div>
+            <div id="loading" class="loading">Загрузка диалогов...</div>
+            <div id="dialogs-list" class="dialog-list"></div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div>&copy; 2025 Telegram Dialogs Viewer</div>
+            <div class="footer-links">
+                <a href="/docs" target="_blank">API Документация</a>
+                <a href="https://github.com/askulibaba/telegram-dialogs-viewer" target="_blank">GitHub</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html> 

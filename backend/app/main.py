@@ -5,6 +5,7 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
 
 from app.core.config import settings
 from app.api import auth, dialogs
@@ -211,16 +212,21 @@ async def on_shutdown():
     await http_client.aclose()
     logger.info("HTTP клиент закрыт")
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
     """
-    Корневой эндпоинт
+    Корневой эндпоинт - возвращает HTML-страницу
     """
-    return {
-        "app_name": settings.APP_NAME,
-        "version": "0.1.0",
-        "docs_url": "/docs"
-    }
+    index_path = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_path):
+        with open(index_path, "r", encoding="utf-8") as f:
+            return f.read()
+    else:
+        return {
+            "app_name": settings.APP_NAME,
+            "version": "0.1.0",
+            "docs_url": "/docs"
+        }
 
 @app.get("/health")
 async def health():
