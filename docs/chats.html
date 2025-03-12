@@ -9,58 +9,70 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: 0;
+            padding: 16px;
             background-color: var(--tg-theme-bg-color, #fff);
             color: var(--tg-theme-text-color, #000);
         }
         .container {
-            max-width: 600px;
+            max-width: 800px;
             margin: 0 auto;
-            padding: 16px;
+            padding: 20px;
         }
-        .dialog-list {
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--tg-theme-hint-color, #ddd);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: var(--tg-theme-text-color, #000);
+        }
+        .dialogs {
             list-style: none;
             padding: 0;
             margin: 0;
         }
-        .dialog-item {
+        .dialog {
             display: flex;
             align-items: center;
             padding: 12px;
-            border-bottom: 1px solid var(--tg-theme-hint-color, #eee);
+            margin-bottom: 8px;
+            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            border-radius: 12px;
             cursor: pointer;
             transition: background-color 0.2s;
         }
-        .dialog-item:hover {
-            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+        .dialog:hover {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #fff);
         }
         .dialog-avatar {
             width: 48px;
             height: 48px;
             border-radius: 50%;
-            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
-            margin-right: 16px;
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #fff);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
-            color: var(--tg-theme-button-color, #2481cc);
+            font-size: 20px;
+            margin-right: 12px;
+            flex-shrink: 0;
         }
-        .dialog-content {
-            flex: 1;
-        }
-        .dialog-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 4px;
+        .dialog-info {
+            flex-grow: 1;
+            min-width: 0;
         }
         .dialog-name {
             font-weight: bold;
-            color: var(--tg-theme-text-color, #000);
-        }
-        .dialog-time {
-            font-size: 12px;
-            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .dialog-message {
             color: var(--tg-theme-hint-color, #666);
@@ -69,84 +81,128 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .unread-badge {
-            background-color: var(--tg-theme-button-color, #2481cc);
-            color: #fff;
-            border-radius: 12px;
-            padding: 2px 6px;
-            font-size: 12px;
-            margin-left: 8px;
+        .dialog:hover .dialog-message {
+            color: var(--tg-theme-button-text-color, #fff);
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--tg-theme-hint-color, #666);
+        }
+        .error {
+            color: var(--tg-theme-destructive-text-color, #ff3b30);
+            text-align: center;
+            padding: 20px;
+        }
+        .no-dialogs {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--tg-theme-hint-color, #666);
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="dialog-list" id="dialogList">
-            <!-- Диалоги будут добавлены через JavaScript -->
+        <div class="header">
+            <h1>Диалоги</h1>
+        </div>
+        <div id="loading" class="loading">Загрузка диалогов...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <ul id="dialogs" class="dialogs" style="display: none;"></ul>
+        <div id="no-dialogs" class="no-dialogs" style="display: none;">
+            Нет доступных диалогов
         </div>
     </div>
+
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Функция для форматирования даты
-        function formatDate(dateStr) {
-            const date = new Date(dateStr);
-            const now = new Date();
-            const diff = now - date;
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dialogs').style.display = 'none';
+            const errorElement = document.getElementById('error');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+        }
+
+        function showDialogs(dialogs) {
+            document.getElementById('loading').style.display = 'none';
             
-            if (diff < 24 * 60 * 60 * 1000) {
-                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            } else if (diff < 7 * 24 * 60 * 60 * 1000) {
-                return ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][date.getDay()];
-            } else {
-                return date.toLocaleDateString();
+            if (!dialogs || dialogs.length === 0) {
+                document.getElementById('no-dialogs').style.display = 'block';
+                return;
+            }
+
+            const dialogsList = document.getElementById('dialogs');
+            dialogsList.innerHTML = '';
+
+            dialogs.forEach(dialog => {
+                const li = document.createElement('li');
+                li.className = 'dialog';
+                li.onclick = () => selectDialog(dialog);
+
+                const avatar = document.createElement('div');
+                avatar.className = 'dialog-avatar';
+                avatar.textContent = dialog.name.charAt(0).toUpperCase();
+
+                const info = document.createElement('div');
+                info.className = 'dialog-info';
+
+                const name = document.createElement('div');
+                name.className = 'dialog-name';
+                name.textContent = dialog.name;
+
+                const message = document.createElement('div');
+                message.className = 'dialog-message';
+                message.textContent = dialog.last_message || 'Нет сообщений';
+
+                info.appendChild(name);
+                info.appendChild(message);
+                li.appendChild(avatar);
+                li.appendChild(info);
+                dialogsList.appendChild(li);
+            });
+
+            dialogsList.style.display = 'block';
+        }
+
+        function selectDialog(dialog) {
+            // Сохраняем выбранный диалог
+            localStorage.setItem('selected_dialog', JSON.stringify(dialog));
+            // Переходим на страницу шифрования
+            window.location.href = 'index.html';
+        }
+
+        // Проверяем авторизацию
+        const session = localStorage.getItem('telegram_auth');
+        if (!session) {
+            window.location.href = 'login.html';
+        } else {
+            try {
+                const sessionData = JSON.parse(session);
+                const authDate = sessionData.auth_date;
+                const now = Math.floor(Date.now() / 1000);
+                
+                if (now - authDate > 86400) { // 24 часа
+                    localStorage.removeItem('telegram_auth');
+                    window.location.href = 'login.html';
+                }
+            } catch (e) {
+                localStorage.removeItem('telegram_auth');
+                window.location.href = 'login.html';
             }
         }
 
-        // Функция для получения инициалов из имени
-        function getInitials(name) {
-            return name
-                .split(' ')
-                .map(word => word[0])
-                .join('')
-                .toUpperCase()
-                .slice(0, 2);
-        }
+        // Получаем диалоги от бота
+        tg.onEvent('mainButtonClicked', function() {
+            tg.sendData(JSON.stringify({ type: 'get_dialogs' }));
+        });
 
-        // Функция для отображения диалогов
-        function renderDialogs(dialogs) {
-            const dialogList = document.getElementById('dialogList');
-            dialogList.innerHTML = dialogs.map(dialog => `
-                <div class="dialog-item" onclick="selectDialog(${dialog.id})">
-                    <div class="dialog-avatar">
-                        ${getInitials(dialog.name)}
-                    </div>
-                    <div class="dialog-content">
-                        <div class="dialog-header">
-                            <span class="dialog-name">${dialog.name}</span>
-                            <span class="dialog-time">${formatDate(dialog.last_message_date)}</span>
-                        </div>
-                        <div class="dialog-message">
-                            ${dialog.last_message || ''}
-                            ${dialog.unread_count > 0 ? `<span class="unread-badge">${dialog.unread_count}</span>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        // Функция выбора диалога
-        function selectDialog(dialogId) {
-            tg.sendData(JSON.stringify({
-                type: 'select_dialog',
-                dialog_id: dialogId
-            }));
-        }
-
-        // Получаем диалоги из localStorage или от бота
-        const dialogs = JSON.parse(localStorage.getItem('telegram_dialogs') || '[]');
-        renderDialogs(dialogs);
+        // Обработка ошибок
+        tg.onEvent('error', function(error) {
+            showError('Ошибка: ' + error);
+        });
     </script>
 </body>
 </html> 

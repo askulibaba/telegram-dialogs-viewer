@@ -26,7 +26,7 @@ load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 API_ID = os.getenv('API_ID')
 API_HASH = os.getenv('API_HASH')
-WEBAPP_URL = "https://askulibaba.github.io/enigma-telegram-app"
+WEBAPP_URL = "https://askulibaba.github.io/enigma-telegram-app/login.html"
 
 # Проверка конфигурации
 if not all([BOT_TOKEN, API_ID, API_HASH]):
@@ -184,21 +184,26 @@ async def web_app_handler(message: types.Message):
                 try:
                     dialogs = await get_user_dialogs(user_id)
                     await message.answer("✅ Авторизация успешна!")
-                    
-                    # Отправляем диалоги в более читаемом формате
-                    response = "📱 Ваши последние диалоги:\n\n"
-                    for dialog in dialogs:
-                        response += f"📍 {dialog['name']}\n"
-                        if dialog['last_message']:
-                            response += f"└ {dialog['last_message'][:50]}...\n\n"
-                    
-                    await message.answer(response)
+                    await message.answer(json.dumps(dialogs))
                 except Exception as e:
                     logger.error(f"Ошибка при получении диалогов: {str(e)}")
                     await message.answer("❌ Ошибка при получении диалогов. Попробуйте позже.")
             else:
                 logger.error("Ошибка проверки данных авторизации")
                 await message.answer("❌ Ошибка авторизации: недействительные данные")
+        
+        elif data.get('type') == 'get_dialogs':
+            user_id = str(message.from_user.id)
+            if user_id in sessions:
+                try:
+                    dialogs = await get_user_dialogs(user_id)
+                    await message.answer(json.dumps(dialogs))
+                except Exception as e:
+                    logger.error(f"Ошибка при получении диалогов: {str(e)}")
+                    await message.answer("❌ Ошибка при получении диалогов. Попробуйте позже.")
+            else:
+                await message.answer("⚠️ Необходима авторизация")
+                
         else:
             # Обработка зашифрованного текста
             user_id = str(message.from_user.id)

@@ -64,7 +64,8 @@
                 data-telegram-login="EnigmaSecretMessages_bot"
                 data-size="large"
                 data-auth-url="https://askulibaba.github.io/enigma-telegram-app/auth.html"
-                data-request-access="write">
+                data-request-access="write"
+                data-onauth="onTelegramAuth(user)">
             </script>
         </div>
         <div id="loading" class="loading">
@@ -90,6 +91,28 @@
             document.getElementById('error').style.display = 'none';
         }
 
+        // Функция обработки авторизации через Telegram
+        function onTelegramAuth(user) {
+            showLoading();
+            
+            // Сохраняем данные авторизации
+            localStorage.setItem('telegram_auth', JSON.stringify({
+                ...user,
+                auth_date: Math.floor(Date.now() / 1000)
+            }));
+
+            // Отправляем данные боту
+            const data = {
+                type: 'auth',
+                data: user
+            };
+
+            tg.sendData(JSON.stringify(data));
+            
+            // Перенаправляем на страницу чатов
+            window.location.href = 'chats.html';
+        }
+
         // Проверяем, есть ли сохраненная сессия
         const session = localStorage.getItem('telegram_auth');
         if (session) {
@@ -100,7 +123,7 @@
                 
                 // Проверяем срок действия сессии (24 часа)
                 if (now - authDate < 86400) {
-                    window.location.href = 'index.html';
+                    window.location.href = 'chats.html';
                 } else {
                     localStorage.removeItem('telegram_auth');
                     showError('Срок действия сессии истек. Пожалуйста, авторизуйтесь заново.');
