@@ -30,9 +30,12 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 API_ID = os.getenv('API_ID')
 API_HASH = os.getenv('API_HASH')
 PORT = int(os.getenv('PORT', 5000))
-HOST = os.getenv('HOST', '0.0.0.0')
-APP_URL = os.getenv('APP_URL', f'https://{os.getenv("RAILWAY_STATIC_URL", "localhost:5000")}')
-WEBAPP_URL = f"{APP_URL}/login.html"
+HOST = '0.0.0.0'  # Для Railway всегда используем 0.0.0.0
+APP_URL = os.getenv('APP_URL')
+
+if not APP_URL:
+    logger.error("Отсутствует APP_URL в переменных окружения!")
+    exit(1)
 
 # Проверка конфигурации
 if not all([BOT_TOKEN, API_ID, API_HASH]):
@@ -44,6 +47,14 @@ if not all([BOT_TOKEN, API_ID, API_HASH]):
 
 # Инициализация Flask
 app = Flask(__name__, static_folder='docs')
+
+# Настройка CORS для работы с Railway
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', APP_URL)
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
 
 # Инициализация бота
 bot = Bot(token=BOT_TOKEN)
@@ -81,7 +92,7 @@ def auth():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/dialogs', methods=['GET'])
-async def get_dialogs_route():
+async def get_dialogs():
     try:
         user_id = request.args.get('user_id')
         if not user_id or user_id not in sessions:
@@ -195,22 +206,19 @@ def verify_telegram_data(data):
 async def start(message: types.Message):
     """Обработчик команды /start"""
     try:
-        logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton(
             text="Открыть список диалогов",
             web_app=WebAppInfo(url=APP_URL)
         ))
         
-        logger.info(f"Отправляем приветственное сообщение с APP_URL: {APP_URL}")
         await message.answer(
             "Привет! Это бот для просмотра диалогов Telegram.\n"
             "Нажмите на кнопку ниже, чтобы открыть приложение.",
             reply_markup=markup
         )
-        logger.info("Приветственное сообщение отправлено успешно")
     except Exception as e:
-        logger.error(f"Ошибка в обработчике /start: {str(e)}", exc_info=True)
+        logger.error(f"Ошибка в обработчике /start: {str(e)}")
         await message.answer("Произошла ошибка при запуске бота. Попробуйте позже.")
 
 def run_flask():
@@ -231,10 +239,4 @@ if __name__ == '__main__':
     
     # Запускаем бота
     logger.info("🚀 Запуск бота и веб-сервера...")
-    logger.info(f"Конфигурация:")
-    logger.info(f"HOST: {HOST}")
-    logger.info(f"PORT: {PORT}")
-    logger.info(f"APP_URL: {APP_URL}")
-    logger.info(f"WEBAPP_URL: {WEBAPP_URL}")
-    
     run_bot() 

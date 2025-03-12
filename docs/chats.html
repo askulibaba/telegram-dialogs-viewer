@@ -118,6 +118,9 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
+        // Определяем базовый URL для API
+        const API_BASE_URL = 'https://enigma-telegram-app.up.railway.app';
+
         function showError(message) {
             document.getElementById('loading').style.display = 'none';
             document.getElementById('dialogs').style.display = 'none';
@@ -171,13 +174,13 @@
             // Сохраняем выбранный диалог
             localStorage.setItem('selected_dialog', JSON.stringify(dialog));
             // Переходим на страницу шифрования
-            window.location.href = 'index.html';
+            window.location.href = `${API_BASE_URL}/index.html`;
         }
 
         // Проверяем авторизацию
         const session = localStorage.getItem('telegram_auth');
         if (!session) {
-            window.location.href = 'login.html';
+            window.location.href = `${API_BASE_URL}/login.html`;
         } else {
             try {
                 const sessionData = JSON.parse(session);
@@ -186,18 +189,28 @@
                 
                 if (now - authDate > 86400) { // 24 часа
                     localStorage.removeItem('telegram_auth');
-                    window.location.href = 'login.html';
+                    window.location.href = `${API_BASE_URL}/login.html`;
+                } else {
+                    // Получаем диалоги от сервера
+                    fetch(`${API_BASE_URL}/api/dialogs?user_id=${sessionData.id}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                showDialogs(data.dialogs);
+                            } else {
+                                throw new Error(data.error || 'Ошибка получения диалогов');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Ошибка при получении диалогов:', error);
+                            showError('Ошибка при получении диалогов');
+                        });
                 }
             } catch (e) {
                 localStorage.removeItem('telegram_auth');
-                window.location.href = 'login.html';
+                window.location.href = `${API_BASE_URL}/login.html`;
             }
         }
-
-        // Получаем диалоги от бота
-        tg.onEvent('mainButtonClicked', function() {
-            tg.sendData(JSON.stringify({ type: 'get_dialogs' }));
-        });
 
         // Обработка ошибок
         tg.onEvent('error', function(error) {
