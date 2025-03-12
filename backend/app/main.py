@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.utils.executor import set_webhook
+from aiogram.dispatcher.webhook import SendMessage
 
 from app.core.config import settings
 from app.api import auth, dialogs
@@ -48,13 +48,10 @@ if os.path.exists(static_dir):
     # Подключаем статические файлы
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# Инициализация бота
+# Создаем бота и диспетчер
 bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
-
-# Отключаем встроенный механизм поллинга
-dp.skip_updates = True
 
 # Обработчик команды /start
 @dp.message_handler(commands=['start'])
@@ -72,8 +69,9 @@ async def cmd_start(message: types.Message):
     keyboard = types.InlineKeyboardMarkup().add(webapp_button)
     
     # Отправляем приветственное сообщение
-    await message.answer(
-        f"Привет, {message.from_user.first_name}! Я бот для просмотра диалогов Telegram.",
+    return SendMessage(
+        chat_id=message.chat.id,
+        text=f"Привет, {message.from_user.first_name}! Я бот для просмотра диалогов Telegram.",
         reply_markup=keyboard
     )
 
@@ -89,9 +87,15 @@ async def webhook(request: Request):
     update_data = await request.json()
     logger.info(f"Данные запроса: {update_data}")
     
-    # Обрабатываем обновление
+    # Создаем объект Update
     update = types.Update(**update_data)
-    await dp.process_update(update)
+    
+    # Обрабатываем обновление
+    results = await dp.process_update(update)
+    
+    # Если есть результаты, отправляем их
+    if results:
+        return results[0]
     
     return Response()
 
@@ -103,15 +107,22 @@ async def on_startup():
     logger.info("Запуск приложения...")
     
     # Удаляем все предыдущие вебхуки
-    await bot.delete_webhook()
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Предыдущие вебхуки удалены")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении вебхука: {e}")
     
     # Формируем URL вебхука
     webhook_url = f"{settings.APP_URL}/webhook"
     
     # Устанавливаем вебхук
-    logger.info(f"Устанавливаем вебхук на {webhook_url}")
-    await bot.set_webhook(webhook_url)
-    logger.info("Вебхук успешно установлен")
+    try:
+        logger.info(f"Устанавливаем вебхук на {webhook_url}")
+        await bot.set_webhook(webhook_url)
+        logger.info("Вебхук успешно установлен")
+    except Exception as e:
+        logger.error(f"Ошибка при установке вебхука: {e}")
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -121,10 +132,15 @@ async def on_shutdown():
     logger.info("Остановка приложения...")
     
     # Удаляем вебхук
-    await bot.delete_webhook()
+    try:
+        await bot.delete_webhook()
+        logger.info("Вебхук удален")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении вебхука: {e}")
     
     # Закрываем сессию бота
     await bot.session.close()
+    logger.info("Сессия бота закрыта")
 
 @app.get("/")
 async def root():
