@@ -1,45 +1,87 @@
 # Telegram Dialogs Viewer
 
-Веб-приложение для просмотра диалогов Telegram через авторизацию в боте.
+Веб-приложение для просмотра диалогов Telegram с использованием Telegram Mini App.
+
+## Описание
+
+Это веб-приложение позволяет пользователям:
+- Авторизоваться через Telegram
+- Просматривать список своих диалогов в Telegram
+- Видеть последние сообщения и непрочитанные сообщения
+
+## Технологии
+
+- Python 3.9+
+- Flask (веб-сервер)
+- aiogram (Telegram Bot API)
+- Telethon (Telegram Client API)
+- HTML5/CSS3/JavaScript (фронтенд)
 
 ## Установка
 
 1. Клонируйте репозиторий:
 ```bash
-git clone https://github.com/askulibaba/enigma-telegram-app.git
-cd enigma-telegram-app
+git clone https://github.com/your-username/telegram-dialogs-viewer.git
+cd telegram-dialogs-viewer
 ```
 
-2. Установите зависимости:
+2. Создайте виртуальное окружение и активируйте его:
+```bash
+python -m venv venv
+source venv/bin/activate  # для Linux/Mac
+venv\Scripts\activate     # для Windows
+```
+
+3. Установите зависимости:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Создайте файл `.env` со следующими параметрами:
+4. Создайте файл `.env` и заполните его:
 ```
-BOT_TOKEN=ваш_токен_бота
-API_ID=ваш_api_id
-API_HASH=ваш_api_hash
+BOT_TOKEN=your_bot_token
+API_ID=your_api_id
+API_HASH=your_api_hash
+APP_URL=https://your-app-name.up.railway.app
 ```
 
-## Запуск
+## Настройка на Railway
 
+1. Создайте новый проект на Railway
+2. Подключите GitHub репозиторий
+3. Добавьте переменные окружения в настройках проекта
+4. Дождитесь автоматического деплоя
+
+## Структура проекта
+
+```
+├── app/
+│   ├── static/         # Статические файлы (CSS, JS)
+│   └── templates/      # HTML шаблоны
+├── bot/
+│   ├── __init__.py
+│   ├── handlers.py     # Обработчики команд бота
+│   └── utils.py        # Вспомогательные функции
+├── sessions/           # Сессии Telegram
+├── .env               # Переменные окружения
+├── .gitignore        # Игнорируемые файлы
+├── bot.py            # Основной файл бота
+├── Procfile          # Конфигурация для Railway
+├── README.md         # Документация
+└── requirements.txt  # Зависимости проекта
+```
+
+## Разработка
+
+Для локальной разработки:
+
+1. Запустите бота:
 ```bash
 python bot.py
 ```
 
-## Использование
+2. Откройте веб-приложение через бота в Telegram
 
-1. Откройте веб-приложение по адресу: https://askulibaba.github.io/enigma-telegram-app/login.html
-2. Авторизуйтесь через Telegram
-3. После успешной авторизации вы увидите список ваших диалогов
+## Лицензия
 
-## Структура проекта
-
-- `bot.py` - основной файл бота
-- `docs/` - веб-интерфейс
-  - `login.html` - страница авторизации
-  - `chats.html` - страница с диалогами
-- `sessions/` - директория для хранения сессий Telethon
-- `.env` - конфигурация
-- `requirements.txt` - зависимости проекта 
+MIT 

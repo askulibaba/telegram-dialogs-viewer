@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ваши диалоги - Telegram Dialogs Viewer</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Ваши диалоги</h1>
+        </div>
+        <div id="loading" class="loading">Загрузка диалогов...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <ul id="dialogs" class="dialogs" style="display: none;"></ul>
+        <div id="no-dialogs" class="no-dialogs" style="display: none;">
+            Нет доступных диалогов
+        </div>
+    </div>
+    <script src="/static/js/dialogs.js"></script>
+</body>
+</html> 

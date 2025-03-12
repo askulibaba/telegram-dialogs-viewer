@@ -1,0 +1,129 @@
+/* Общие стили */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 16px;
+    background-color: var(--tg-theme-bg-color, #fff);
+    color: var(--tg-theme-text-color, #000);
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    color: var(--tg-theme-text-color, #333);
+    margin-bottom: 24px;
+    font-size: 24px;
+}
+
+/* Стили для страницы авторизации */
+.description {
+    color: var(--tg-theme-hint-color, #666);
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.login-container {
+    margin: 20px 0;
+    padding: 20px;
+    background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+    border-radius: 12px;
+}
+
+.error-message {
+    color: var(--tg-theme-destructive-text-color, #ff3b30);
+    margin-top: 16px;
+    display: none;
+}
+
+.loading {
+    text-align: center;
+    padding: 20px;
+    color: var(--tg-theme-hint-color, #666);
+}
+
+/* Стили для списка диалогов */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--tg-theme-hint-color, #ddd);
+}
+
+.dialogs {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.dialog {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    margin-bottom: 8px;
+    background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.dialog:hover {
+    background-color: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+}
+
+.dialog-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.dialog-info {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.dialog-name {
+    font-weight: bold;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dialog-message {
+    color: var(--tg-theme-hint-color, #666);
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dialog:hover .dialog-message {
+    color: var(--tg-theme-button-text-color, #fff);
+}
+
+.error {
+    color: var(--tg-theme-destructive-text-color, #ff3b30);
+    text-align: center;
+    padding: 20px;
+}
+
+.no-dialogs {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--tg-theme-hint-color, #666);
+} 

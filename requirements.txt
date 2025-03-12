@@ -1,5 +1,5 @@
-aiogram==2.25.1
-aiohttp==3.8.5
-telethon==1.31.1
 python-dotenv==1.0.0
-flask==3.0.2 
+aiogram==2.25.1
+Flask==2.3.3
+telethon==1.29.2
+requests==2.31.0 
