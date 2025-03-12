@@ -61,54 +61,69 @@ async def webhook(request: Request):
     """
     logger.info("Получен запрос на вебхук")
     
-    # Получаем данные запроса
-    update_data = await request.json()
-    logger.info(f"Данные запроса: {update_data}")
-    
-    # Проверяем, есть ли сообщение в обновлении
-    if 'message' in update_data:
-        message = update_data['message']
+    try:
+        # Получаем данные запроса
+        update_data = await request.json()
+        logger.info(f"Данные запроса: {update_data}")
         
-        # Проверяем, есть ли текст в сообщении
-        if 'text' in message:
-            text = message['text']
+        # Проверяем, есть ли сообщение в обновлении
+        if 'message' in update_data:
+            message = update_data['message']
+            logger.info(f"Получено сообщение: {message}")
             
-            # Обрабатываем команду /start
-            if text == '/start':
-                await handle_start_command(message)
-    
-    return Response()
+            # Проверяем, есть ли текст в сообщении
+            if 'text' in message:
+                text = message['text']
+                logger.info(f"Текст сообщения: {text}")
+                
+                # Обрабатываем команду /start
+                if text == '/start':
+                    logger.info("Обрабатываем команду /start")
+                    await handle_start_command(message)
+                    return Response(content="OK", status_code=200)
+        
+        return Response(content="OK", status_code=200)
+    except Exception as e:
+        logger.error(f"Ошибка при обработке вебхука: {e}", exc_info=True)
+        return Response(content="Error", status_code=500)
 
 async def handle_start_command(message):
     """
     Обработчик команды /start
     """
-    chat_id = message['chat']['id']
-    user_first_name = message.get('from', {}).get('first_name', 'пользователь')
-    user_id = message.get('from', {}).get('id')
-    
-    logger.info(f"Получена команда /start от пользователя {user_id}")
-    
-    # Создаем кнопку для открытия веб-приложения
-    keyboard = {
-        'inline_keyboard': [
-            [
-                {
-                    'text': 'Открыть приложение',
-                    'web_app': {
-                        'url': settings.APP_URL
+    try:
+        chat_id = message['chat']['id']
+        user_first_name = message.get('from', {}).get('first_name', 'пользователь')
+        user_id = message.get('from', {}).get('id')
+        
+        logger.info(f"Получена команда /start от пользователя {user_id} (имя: {user_first_name}, чат: {chat_id})")
+        
+        # Создаем кнопку для открытия веб-приложения
+        keyboard = {
+            'inline_keyboard': [
+                [
+                    {
+                        'text': 'Открыть приложение',
+                        'web_app': {
+                            'url': settings.APP_URL
+                        }
                     }
-                }
+                ]
             ]
-        ]
-    }
-    
-    # Отправляем приветственное сообщение
-    await send_telegram_message(
-        chat_id=chat_id,
-        text=f"Привет, {user_first_name}! Я бот для просмотра диалогов Telegram.",
-        reply_markup=keyboard
-    )
+        }
+        
+        # Отправляем приветственное сообщение
+        result = await send_telegram_message(
+            chat_id=chat_id,
+            text=f"Привет, {user_first_name}! Я бот для просмотра диалогов Telegram.",
+            reply_markup=keyboard
+        )
+        
+        logger.info(f"Результат отправки сообщения: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка при обработке команды /start: {e}", exc_info=True)
+        return None
 
 async def send_telegram_message(chat_id, text, reply_markup=None):
     """
@@ -130,12 +145,18 @@ async def send_telegram_message(chat_id, text, reply_markup=None):
         data["reply_markup"] = json.dumps(reply_markup)
     
     try:
+        logger.info(f"Отправка сообщения в чат {chat_id}: {text}")
+        logger.info(f"URL запроса: {url}")
+        logger.info(f"Данные запроса: {data}")
+        
         response = await http_client.post(url, json=data)
         response.raise_for_status()
-        logger.info(f"Сообщение успешно отправлено в чат {chat_id}")
-        return response.json()
+        
+        result = response.json()
+        logger.info(f"Сообщение успешно отправлено в чат {chat_id}: {result}")
+        return result
     except Exception as e:
-        logger.error(f"Ошибка при отправке сообщения: {e}")
+        logger.error(f"Ошибка при отправке сообщения: {e}", exc_info=True)
         return None
 
 async def set_telegram_webhook(webhook_url):
@@ -153,13 +174,14 @@ async def set_telegram_webhook(webhook_url):
     }
     
     try:
+        logger.info(f"Установка вебхука на {webhook_url}")
         response = await http_client.post(url, json=data)
         response.raise_for_status()
         result = response.json()
         logger.info(f"Вебхук успешно установлен: {result}")
         return result
     except Exception as e:
-        logger.error(f"Ошибка при установке вебхука: {e}")
+        logger.error(f"Ошибка при установке вебхука: {e}", exc_info=True)
         return None
 
 async def delete_telegram_webhook():
@@ -173,13 +195,14 @@ async def delete_telegram_webhook():
     }
     
     try:
+        logger.info("Удаление вебхука")
         response = await http_client.post(url, json=data)
         response.raise_for_status()
         result = response.json()
         logger.info(f"Вебхук успешно удален: {result}")
         return result
     except Exception as e:
-        logger.error(f"Ошибка при удалении вебхука: {e}")
+        logger.error(f"Ошибка при удалении вебхука: {e}", exc_info=True)
         return None
 
 @app.on_event("startup")
@@ -196,7 +219,27 @@ async def on_startup():
     webhook_url = f"{settings.APP_URL}/webhook"
     
     # Устанавливаем вебхук
-    await set_telegram_webhook(webhook_url)
+    result = await set_telegram_webhook(webhook_url)
+    
+    # Проверяем, что вебхук установлен успешно
+    if result and result.get("ok"):
+        logger.info("Вебхук успешно установлен")
+    else:
+        logger.error(f"Не удалось установить вебхук: {result}")
+    
+    # Проверяем токен бота
+    try:
+        me_url = f"{TELEGRAM_API_URL}/getMe"
+        response = await http_client.get(me_url)
+        response.raise_for_status()
+        me_data = response.json()
+        if me_data.get("ok"):
+            bot_info = me_data.get("result", {})
+            logger.info(f"Бот успешно авторизован: @{bot_info.get('username')} ({bot_info.get('first_name')})")
+        else:
+            logger.error(f"Ошибка при получении информации о боте: {me_data}")
+    except Exception as e:
+        logger.error(f"Ошибка при проверке токена бота: {e}", exc_info=True)
 
 @app.on_event("shutdown")
 async def on_shutdown():
