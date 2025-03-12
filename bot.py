@@ -51,9 +51,13 @@ def static_files(path):
 def auth():
     """Обработка авторизации через Telegram"""
     try:
+        logger.info("Получен запрос на авторизацию")
         data = request.json
+        logger.info(f"Данные авторизации: {data}")
+        
         if verify_telegram_auth(os.getenv('BOT_TOKEN'), data):
             user_id = str(data.get('id'))
+            logger.info(f"Пользователь {user_id} успешно авторизован")
             sessions[user_id] = {
                 'auth_date': data.get('auth_date'),
                 'first_name': data.get('first_name'),
@@ -61,33 +65,48 @@ def auth():
                 'username': data.get('username')
             }
             return jsonify({'success': True})
+        logger.error("Ошибка верификации данных авторизации")
         return jsonify({'success': False, 'error': 'Invalid auth data'})
     except Exception as e:
-        logger.error(f"Ошибка при авторизации: {str(e)}")
+        logger.error(f"Ошибка при авторизации: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/dialogs', methods=['GET'])
 async def get_dialogs_route():
     """Получение списка диалогов"""
     try:
+        logger.info("Получен запрос на получение диалогов")
         user_id = request.args.get('user_id')
+        logger.info(f"ID пользователя: {user_id}")
+        
         if not user_id or user_id not in sessions:
+            logger.error(f"Пользователь не авторизован: {user_id}")
             return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+        logger.info(f"Сессии: {sessions}")
         
         # Инициализируем клиент, если его нет
         if user_id not in telegram_clients:
-            client = await init_telegram_client(
-                user_id,
-                os.getenv('API_ID'),
-                os.getenv('API_HASH')
-            )
-            telegram_clients[user_id] = client
+            logger.info(f"Инициализация клиента для пользователя {user_id}")
+            try:
+                client = await init_telegram_client(
+                    user_id,
+                    os.getenv('API_ID'),
+                    os.getenv('API_HASH')
+                )
+                telegram_clients[user_id] = client
+                logger.info(f"Клиент для пользователя {user_id} успешно инициализирован")
+            except Exception as e:
+                logger.error(f"Ошибка при инициализации клиента: {str(e)}", exc_info=True)
+                return jsonify({'success': False, 'error': f"Ошибка инициализации: {str(e)}"})
         
         # Получаем диалоги
+        logger.info(f"Получение диалогов для пользователя {user_id}")
         dialogs = await get_dialogs(telegram_clients[user_id])
+        logger.info(f"Получено {len(dialogs)} диалогов")
         return jsonify({'success': True, 'dialogs': dialogs})
     except Exception as e:
-        logger.error(f"Ошибка при получении диалогов: {str(e)}")
+        logger.error(f"Ошибка при получении диалогов: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)})
 
 def run_flask():
