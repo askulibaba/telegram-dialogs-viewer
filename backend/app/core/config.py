@@ -1,6 +1,6 @@
 import os
 import secrets
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
 
 from pydantic import AnyHttpUrl, BaseSettings, validator
 
@@ -16,15 +16,24 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 дней
     
     # CORS настройки
-    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
+    BACKEND_CORS_ORIGINS: Union[List[str], str] = []
 
     @validator("BACKEND_CORS_ORIGINS", pre=True)
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
-        if isinstance(v, str) and not v.startswith("["):
+        if isinstance(v, str):
+            # Если значение - строка в формате JSON-массива
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    import json
+                    return json.loads(v)
+                except Exception:
+                    pass
+            
+            # Если значение - строка с разделителями-запятыми
             return [i.strip() for i in v.split(",")]
-        elif isinstance(v, (list, str)):
-            return v
-        raise ValueError(v)
+        
+        # Если значение уже список или другой тип
+        return v
     
     # Telegram настройки
     TELEGRAM_BOT_TOKEN: str
