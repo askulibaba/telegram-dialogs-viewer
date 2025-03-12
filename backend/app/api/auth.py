@@ -3,12 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.security import create_access_token, verify_telegram_auth
-from app.services.telegram import (
-    get_or_create_client, 
-    is_user_authorized, 
-    send_code_request, 
-    sign_in
-)
+from app.services.telegram import send_code_request, sign_in
 
 router = APIRouter()
 
@@ -28,6 +23,7 @@ class PhoneAuthRequest(BaseModel):
 
 class CodeAuthRequest(BaseModel):
     """Запрос на авторизацию по коду"""
+    temp_user_id: int
     phone_number: str
     code: str
     phone_code_hash: str
@@ -39,20 +35,21 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     user: Dict[str, Any]
 
-@router.post("/telegram-auth", response_model=AuthResponse)
+@router.post("/telegram", response_model=AuthResponse)
 async def telegram_auth(auth_data: TelegramAuthRequest):
     """
     Авторизация через Telegram Login Widget
     """
     # Проверяем данные авторизации
-    if not verify_telegram_auth(auth_data.dict()):
+    auth_dict = auth_data.dict()
+    if not verify_telegram_auth(auth_dict):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверные данные авторизации"
         )
     
     # Создаем токен доступа
-    access_token = create_access_token(auth_data.id)
+    access_token = create_access_token({"sub": str(auth_data.id)})
     
     # Формируем ответ
     return {
@@ -66,17 +63,14 @@ async def telegram_auth(auth_data: TelegramAuthRequest):
         }
     }
 
-@router.post("/phone-auth", response_model=Dict[str, Any])
+@router.post("/phone", response_model=Dict[str, Any])
 async def phone_auth(auth_data: PhoneAuthRequest):
     """
     Отправка кода подтверждения на телефон
     """
     try:
-        # Генерируем временный ID пользователя
-        temp_user_id = f"temp_{auth_data.phone_number}"
-        
         # Отправляем запрос на получение кода
-        result = await send_code_request(temp_user_id, auth_data.phone_number)
+        result = await send_code_request(auth_data.phone_number)
         
         return result
     except Exception as e:
@@ -85,18 +79,15 @@ async def phone_auth(auth_data: PhoneAuthRequest):
             detail=str(e)
         )
 
-@router.post("/code-auth", response_model=AuthResponse)
+@router.post("/code", response_model=AuthResponse)
 async def code_auth(auth_data: CodeAuthRequest):
     """
     Авторизация по коду подтверждения
     """
     try:
-        # Генерируем временный ID пользователя
-        temp_user_id = f"temp_{auth_data.phone_number}"
-        
         # Авторизуемся
         user = await sign_in(
-            temp_user_id,
+            auth_data.temp_user_id,
             auth_data.phone_number,
             auth_data.code,
             auth_data.phone_code_hash,
@@ -104,7 +95,7 @@ async def code_auth(auth_data: CodeAuthRequest):
         )
         
         # Создаем токен доступа
-        access_token = create_access_token(user["id"])
+        access_token = create_access_token({"sub": str(user["id"])})
         
         # Формируем ответ
         return {
