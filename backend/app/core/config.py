@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str = secrets.token_urlsafe(32)
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 дней
     
+    # URL приложения
+    APP_URL: str = "https://web-production-921c.up.railway.app"
+    
     # CORS настройки
     BACKEND_CORS_ORIGINS: Union[List[str], str] = []
 

@@ -1,10 +1,18 @@
 import os
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import asyncio
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
 from app.core.config import settings
 from app.api import auth, dialogs
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Создаем приложение FastAPI
 app = FastAPI(
@@ -38,6 +46,85 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     # Подключаем статические файлы
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Инициализация бота
+bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
+
+# Обработчик команды /start
+@dp.message_handler(commands=['start'])
+async def cmd_start(message: types.Message):
+    """
+    Обработчик команды /start
+    """
+    logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
+    
+    # Создаем кнопку для открытия веб-приложения
+    webapp_button = types.InlineKeyboardButton(
+        text="Открыть приложение",
+        web_app=types.WebAppInfo(url=settings.APP_URL)
+    )
+    keyboard = types.InlineKeyboardMarkup().add(webapp_button)
+    
+    # Отправляем приветственное сообщение
+    await message.answer(
+        f"Привет, {message.from_user.first_name}! Я бот для просмотра диалогов Telegram.",
+        reply_markup=keyboard
+    )
+
+# Эндпоинт для вебхука Telegram
+@app.post("/webhook")
+async def webhook(request: Request):
+    """
+    Обработчик вебхука Telegram
+    """
+    logger.info("Получен запрос на вебхук")
+    
+    # Получаем данные запроса
+    update_data = await request.json()
+    logger.info(f"Данные запроса: {update_data}")
+    
+    # Обрабатываем обновление
+    update = types.Update(**update_data)
+    await dp.process_update(update)
+    
+    return Response()
+
+@app.on_event("startup")
+async def on_startup():
+    """
+    Действия при запуске приложения
+    """
+    logger.info("Запуск приложения...")
+    
+    # Получаем информацию о вебхуке
+    webhook_info = await bot.get_webhook_info()
+    logger.info(f"Текущие настройки вебхука: {webhook_info}")
+    
+    # Формируем URL вебхука
+    webhook_url = f"{settings.APP_URL}/webhook"
+    
+    # Если вебхук не установлен или отличается от нужного, устанавливаем его
+    if webhook_info.url != webhook_url:
+        logger.info(f"Устанавливаем вебхук на {webhook_url}")
+        await bot.set_webhook(webhook_url)
+        logger.info("Вебхук успешно установлен")
+    else:
+        logger.info("Вебхук уже установлен")
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    """
+    Действия при остановке приложения
+    """
+    logger.info("Остановка приложения...")
+    
+    # Удаляем вебхук
+    await bot.delete_webhook()
+    
+    # Закрываем сессию бота
+    await bot.session.close()
 
 @app.get("/")
 async def root():
