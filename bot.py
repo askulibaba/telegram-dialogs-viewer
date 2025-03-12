@@ -145,7 +145,7 @@ async def main():
         logger.info(f"Режим отладки: {'Включен' if debug_mode else 'Выключен'}")
         
         # Запускаем бота
-        await dp.start_polling(skip_updates=True)
+        await dp.start_polling()
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {str(e)}", exc_info=True)
 
