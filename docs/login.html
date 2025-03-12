@@ -31,11 +31,24 @@
         }
         .login-container {
             margin: 20px 0;
+            padding: 20px;
+            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            border-radius: 12px;
         }
         .description {
             color: var(--tg-theme-hint-color, #666);
             margin-bottom: 20px;
             line-height: 1.5;
+        }
+        .error-message {
+            color: var(--tg-theme-destructive-text-color, #ff3b30);
+            margin-top: 16px;
+            display: none;
+        }
+        .loading {
+            display: none;
+            margin-top: 16px;
+            color: var(--tg-theme-hint-color, #666);
         }
     </style>
 </head>
@@ -54,17 +67,54 @@
                 data-request-access="write">
             </script>
         </div>
+        <div id="loading" class="loading">
+            Подождите, выполняется авторизация...
+        </div>
+        <div id="error" class="error-message"></div>
     </div>
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
+        // Функция для показа ошибки
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // Функция для показа загрузки
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+        }
+
         // Проверяем, есть ли сохраненная сессия
         const session = localStorage.getItem('telegram_auth');
         if (session) {
-            // Если сессия есть, перенаправляем на основную страницу
-            window.location.href = 'index.html';
+            try {
+                const sessionData = JSON.parse(session);
+                const authDate = sessionData.auth_date;
+                const now = Math.floor(Date.now() / 1000);
+                
+                // Проверяем срок действия сессии (24 часа)
+                if (now - authDate < 86400) {
+                    window.location.href = 'index.html';
+                } else {
+                    localStorage.removeItem('telegram_auth');
+                    showError('Срок действия сессии истек. Пожалуйста, авторизуйтесь заново.');
+                }
+            } catch (e) {
+                localStorage.removeItem('telegram_auth');
+                showError('Ошибка при проверке сессии. Пожалуйста, авторизуйтесь заново.');
+            }
         }
+
+        // Обработка ошибок Telegram WebApp
+        tg.onEvent('error', function(error) {
+            showError('Ошибка Telegram WebApp: ' + error);
+        });
     </script>
 </body>
 </html> 
