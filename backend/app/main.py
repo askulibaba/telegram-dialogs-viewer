@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.utils.executor import set_webhook
 
 from app.core.config import settings
 from app.api import auth, dialogs
@@ -51,6 +52,9 @@ if os.path.exists(static_dir):
 bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
+
+# Отключаем встроенный механизм поллинга
+dp.skip_updates = True
 
 # Обработчик команды /start
 @dp.message_handler(commands=['start'])
@@ -98,20 +102,16 @@ async def on_startup():
     """
     logger.info("Запуск приложения...")
     
-    # Получаем информацию о вебхуке
-    webhook_info = await bot.get_webhook_info()
-    logger.info(f"Текущие настройки вебхука: {webhook_info}")
+    # Удаляем все предыдущие вебхуки
+    await bot.delete_webhook()
     
     # Формируем URL вебхука
     webhook_url = f"{settings.APP_URL}/webhook"
     
-    # Если вебхук не установлен или отличается от нужного, устанавливаем его
-    if webhook_info.url != webhook_url:
-        logger.info(f"Устанавливаем вебхук на {webhook_url}")
-        await bot.set_webhook(webhook_url)
-        logger.info("Вебхук успешно установлен")
-    else:
-        logger.info("Вебхук уже установлен")
+    # Устанавливаем вебхук
+    logger.info(f"Устанавливаем вебхук на {webhook_url}")
+    await bot.set_webhook(webhook_url)
+    logger.info("Вебхук успешно установлен")
 
 @app.on_event("shutdown")
 async def on_shutdown():
