@@ -30,16 +30,18 @@ ENV/
 *.swp
 *.swo
 
+# Logs
+*.log
+
+# Local development
+.env
+.env.local
+.env.*.local
+
 # Telegram sessions
 sessions/
 *.session
 *.session-journal
-
-# Environment variables
-.env
-
-# Logs
-*.log
 
 # Системные файлы
 .DS_Store

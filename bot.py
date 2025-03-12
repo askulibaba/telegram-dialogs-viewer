@@ -11,6 +11,9 @@ from telethon import TelegramClient
 from telethon.tl.types import Dialog, User, Chat, Channel
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
 from dotenv import load_dotenv
+from flask import Flask, send_from_directory, jsonify, request
+import asyncio
+from threading import Thread
 
 # Настройка логирования
 logging.basicConfig(
@@ -26,7 +29,9 @@ load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 API_ID = os.getenv('API_ID')
 API_HASH = os.getenv('API_HASH')
-WEBAPP_URL = "https://askulibaba.github.io/enigma-telegram-app/login.html"
+PORT = int(os.getenv('PORT', 5000))
+HOST = os.getenv('HOST', '0.0.0.0')
+WEBAPP_URL = os.getenv('WEBAPP_URL', f'https://{os.getenv("RAILWAY_STATIC_URL", "localhost:5000")}/login.html')
 
 # Проверка конфигурации
 if not all([BOT_TOKEN, API_ID, API_HASH]):
@@ -36,6 +41,9 @@ if not all([BOT_TOKEN, API_ID, API_HASH]):
     logger.error(f"API_HASH: {'Установлен' if API_HASH else 'Отсутствует'}")
     exit(1)
 
+# Инициализация Flask
+app = Flask(__name__, static_folder='docs')
+
 # Инициализация бота
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
@@ -43,6 +51,46 @@ dp = Dispatcher(bot)
 # Хранилище сессий и клиентов
 sessions = {}
 telegram_clients = {}
+
+# Маршруты Flask
+@app.route('/')
+def index():
+    return send_from_directory(app.static_folder, 'login.html')
+
+@app.route('/<path:path>')
+def send_static(path):
+    return send_from_directory(app.static_folder, path)
+
+@app.route('/api/auth', methods=['POST'])
+def auth():
+    try:
+        data = request.json
+        if verify_telegram_data(data):
+            user_id = str(data.get('id'))
+            sessions[user_id] = {
+                'auth_date': data.get('auth_date'),
+                'first_name': data.get('first_name'),
+                'last_name': data.get('last_name'),
+                'username': data.get('username')
+            }
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Invalid auth data'})
+    except Exception as e:
+        logger.error(f"Ошибка при авторизации: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/dialogs', methods=['GET'])
+async def get_dialogs():
+    try:
+        user_id = request.args.get('user_id')
+        if not user_id or user_id not in sessions:
+            return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+        dialogs = await get_user_dialogs(user_id)
+        return jsonify({'success': True, 'dialogs': dialogs})
+    except Exception as e:
+        logger.error(f"Ошибка при получении диалогов: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
 async def init_telegram_client(user_id):
     """Инициализация клиента Telegram"""
@@ -148,12 +196,12 @@ async def start(message: types.Message):
     try:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton(
-            text="Открыть шифрование Энигма",
+            text="Открыть список диалогов",
             web_app=WebAppInfo(url=WEBAPP_URL)
         ))
         
         await message.answer(
-            "Привет! Это бот для шифрования текста методом Энигма.\n"
+            "Привет! Это бот для просмотра диалогов Telegram.\n"
             "Нажмите на кнопку ниже, чтобы открыть приложение.",
             reply_markup=markup
         )
@@ -161,72 +209,22 @@ async def start(message: types.Message):
         logger.error(f"Ошибка в обработчике /start: {str(e)}")
         await message.answer("Произошла ошибка при запуске бота. Попробуйте позже.")
 
-@dp.message_handler(content_types=['web_app_data'])
-async def web_app_handler(message: types.Message):
-    """Обработчик данных от веб-приложения"""
-    try:
-        logger.info(f"Получены данные от веб-приложения: {message.web_app_data.data}")
-        data = json.loads(message.web_app_data.data)
-        
-        if data.get('type') == 'auth':
-            auth_data = data.get('data', {})
-            logger.info(f"Получены данные авторизации: {auth_data}")
-            
-            if verify_telegram_data(auth_data):
-                user_id = str(auth_data.get('id'))
-                sessions[user_id] = {
-                    'auth_date': auth_data.get('auth_date'),
-                    'first_name': auth_data.get('first_name'),
-                    'last_name': auth_data.get('last_name'),
-                    'username': auth_data.get('username')
-                }
-                
-                try:
-                    dialogs = await get_user_dialogs(user_id)
-                    await message.answer("✅ Авторизация успешна!")
-                    await message.answer(json.dumps(dialogs))
-                except Exception as e:
-                    logger.error(f"Ошибка при получении диалогов: {str(e)}")
-                    await message.answer("❌ Ошибка при получении диалогов. Попробуйте позже.")
-            else:
-                logger.error("Ошибка проверки данных авторизации")
-                await message.answer("❌ Ошибка авторизации: недействительные данные")
-        
-        elif data.get('type') == 'get_dialogs':
-            user_id = str(message.from_user.id)
-            if user_id in sessions:
-                try:
-                    dialogs = await get_user_dialogs(user_id)
-                    await message.answer(json.dumps(dialogs))
-                except Exception as e:
-                    logger.error(f"Ошибка при получении диалогов: {str(e)}")
-                    await message.answer("❌ Ошибка при получении диалогов. Попробуйте позже.")
-            else:
-                await message.answer("⚠️ Необходима авторизация")
-                
-        else:
-            # Обработка зашифрованного текста
-            user_id = str(message.from_user.id)
-            if user_id in sessions:
-                await message.answer(f"🔐 Зашифрованный текст: {data}")
-            else:
-                markup = InlineKeyboardMarkup().add(
-                    InlineKeyboardButton("Авторизоваться", web_app=WebAppInfo(url=WEBAPP_URL))
-                )
-                await message.answer(
-                    "⚠️ Необходима авторизация для продолжения",
-                    reply_markup=markup
-                )
-                
-    except json.JSONDecodeError as e:
-        logger.error(f"Ошибка декодирования JSON: {str(e)}")
-        await message.answer("❌ Ошибка обработки данных: неверный формат")
-    except Exception as e:
-        logger.error(f"Необработанная ошибка: {str(e)}")
-        await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+def run_flask():
+    """Запуск Flask сервера"""
+    app.run(host=HOST, port=PORT)
+
+def run_bot():
+    """Запуск бота"""
+    executor.start_polling(dp, skip_updates=True)
 
 if __name__ == '__main__':
     # Создаем директорию для сессий, если её нет
     os.makedirs('sessions', exist_ok=True)
-    logger.info("🚀 Запуск бота...")
-    executor.start_polling(dp, skip_updates=True) 
+    
+    # Запускаем Flask в отдельном потоке
+    flask_thread = Thread(target=run_flask)
+    flask_thread.start()
+    
+    # Запускаем бота
+    logger.info("🚀 Запуск бота и веб-сервера...")
+    run_bot() 
