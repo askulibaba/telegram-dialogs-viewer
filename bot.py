@@ -23,7 +23,12 @@ required_vars = ['BOT_TOKEN', 'API_ID', 'API_HASH', 'APP_URL']
 missing_vars = [var for var in required_vars if not os.getenv(var)]
 if missing_vars:
     logger.error(f"Отсутствуют необходимые переменные окружения: {', '.join(missing_vars)}")
-    exit(1)
+    logger.error("Пожалуйста, добавьте их в настройках проекта на Railway или в файл .env")
+    # Не выходим из программы, чтобы Railway не перезапускал приложение постоянно
+    # Вместо этого продолжаем выполнение, но логируем ошибки
+
+# Создаем директорию для сессий, если она не существует
+os.makedirs('sessions', exist_ok=True)
 
 # Инициализация Flask
 app = Flask(__name__, static_folder='app/static', template_folder='app/templates')
@@ -97,9 +102,6 @@ def run_bot():
     executor.start_polling(dp, skip_updates=True)
 
 if __name__ == '__main__':
-    # Создаем директорию для сессий
-    os.makedirs('sessions', exist_ok=True)
-    
     # Запускаем Flask в отдельном потоке
     flask_thread = Thread(target=run_flask)
     flask_thread.start()
