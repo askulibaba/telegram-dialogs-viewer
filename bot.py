@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import json
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
@@ -46,18 +47,21 @@ async def start(message: types.Message):
     try:
         logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
         
+        # URL для GitHub Pages
+        webapp_url = "https://askulibaba.github.io/telegram-dialogs-viewer/"
+        
         # Создаем клавиатуру с кнопкой для открытия веб-приложения
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton(
             text="Открыть список диалогов",
-            web_app=WebAppInfo(url=os.getenv('APP_URL'))
+            web_app=WebAppInfo(url=webapp_url)
         ))
         
         # Также добавим инлайн-кнопку для открытия веб-приложения
         inline_markup = InlineKeyboardMarkup()
         inline_markup.add(InlineKeyboardButton(
             text="Открыть в браузере",
-            url=os.getenv('APP_URL')
+            url=webapp_url
         ))
         
         await message.answer(
@@ -81,39 +85,44 @@ async def web_app_data_handler(message: types.Message):
     """Обработчик данных от веб-приложения"""
     try:
         logger.info(f"Получены данные от веб-приложения от пользователя {message.from_user.id}")
-        data = message.web_app_data.data
-        logger.info(f"Данные: {data}")
+        data_str = message.web_app_data.data
+        logger.info(f"Данные: {data_str}")
         
-        # Проверяем данные авторизации
-        if not verify_telegram_auth(os.getenv('BOT_TOKEN'), data):
-            logger.error("Ошибка верификации данных авторизации")
-            await message.answer("Ошибка авторизации. Попробуйте снова.")
-            return
+        try:
+            data = json.loads(data_str)
+            data_type = data.get('type')
             
-        # Инициализируем клиент Telegram
-        client = await init_telegram_client(
-            str(message.from_user.id),
-            os.getenv('API_ID'),
-            os.getenv('API_HASH')
-        )
-        telegram_clients[str(message.from_user.id)] = client
-        
-        # Получаем диалоги
-        dialogs = await get_dialogs(client)
-        
-        # Отправляем информацию о диалогах
-        if dialogs:
-            dialog_text = "Ваши последние диалоги:\n\n"
-            for i, dialog in enumerate(dialogs[:10], 1):
-                unread = f" (непрочитано: {dialog['unread_count']})" if dialog['unread_count'] > 0 else ""
-                last_msg = f"\nПоследнее сообщение: {dialog['last_message'][:30]}..." if dialog['last_message'] else ""
-                dialog_text += f"{i}. {dialog['name']}{unread}{last_msg}\n\n"
-            
-            await message.answer(dialog_text)
-        else:
-            await message.answer("Диалоги не найдены.")
-        
-        logger.info(f"Успешно получены и отправлены диалоги для пользователя {message.from_user.id}")
+            if data_type == 'get_dialogs':
+                # Инициализируем клиент Telegram
+                client = await init_telegram_client(
+                    str(message.from_user.id),
+                    os.getenv('API_ID'),
+                    os.getenv('API_HASH')
+                )
+                telegram_clients[str(message.from_user.id)] = client
+                
+                # Получаем диалоги
+                dialogs = await get_dialogs(client)
+                
+                # Отправляем информацию о диалогах
+                if dialogs:
+                    dialog_text = "Ваши последние диалоги:\n\n"
+                    for i, dialog in enumerate(dialogs[:10], 1):
+                        unread = f" (непрочитано: {dialog['unread_count']})" if dialog['unread_count'] > 0 else ""
+                        last_msg = f"\nПоследнее сообщение: {dialog['last_message'][:30]}..." if dialog['last_message'] else ""
+                        dialog_text += f"{i}. {dialog['name']}{unread}{last_msg}\n\n"
+                    
+                    await message.answer(dialog_text)
+                else:
+                    await message.answer("Диалоги не найдены.")
+                
+                logger.info(f"Успешно получены и отправлены диалоги для пользователя {message.from_user.id}")
+            else:
+                logger.warning(f"Неизвестный тип данных: {data_type}")
+                await message.answer("Неизвестный тип запроса. Пожалуйста, попробуйте снова.")
+        except json.JSONDecodeError:
+            logger.error("Ошибка декодирования JSON")
+            await message.answer("Ошибка обработки данных. Пожалуйста, попробуйте снова.")
     except Exception as e:
         logger.error(f"Ошибка при обработке данных веб-приложения: {str(e)}", exc_info=True)
         await message.answer("Произошла ошибка при обработке данных. Попробуйте позже.")
