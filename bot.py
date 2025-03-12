@@ -116,27 +116,30 @@ async def get_dialogs_route():
         logger.error(f"Ошибка при получении диалогов: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)})
 
-def run_flask():
-    """Запуск Flask сервера"""
-    app.run(
-        host=os.getenv('HOST', '0.0.0.0'),
-        port=int(os.getenv('PORT', 5000)),
-        debug=debug_mode
-    )
-
-def run_bot():
-    """Запуск бота"""
-    executor.start_polling(dp, skip_updates=True)
+# Функция для запуска бота в фоновом режиме
+async def start_bot():
+    """Запуск бота в фоновом режиме"""
+    try:
+        logger.info("Запуск бота в фоновом режиме...")
+        await dp.start_polling(skip_updates=True)
+    except Exception as e:
+        logger.error(f"Ошибка при запуске бота: {str(e)}", exc_info=True)
 
 if __name__ == '__main__':
-    # Запускаем Flask в отдельном потоке
-    flask_thread = Thread(target=run_flask)
-    flask_thread.start()
-    
-    # Запускаем бота
+    # Запускаем бота в фоновом режиме
     logger.info("🚀 Запуск бота и веб-сервера...")
     logger.info(f"Конфигурация:")
     logger.info(f"APP_URL: {os.getenv('APP_URL')}")
     logger.info(f"Режим отладки: {'Включен' if debug_mode else 'Выключен'}")
     
-    run_bot() 
+    # Создаем и запускаем задачу для бота
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.create_task(start_bot())
+    
+    # Запускаем Flask в основном потоке
+    app.run(
+        host=os.getenv('HOST', '0.0.0.0'),
+        port=int(os.getenv('PORT', 5000)),
+        debug=debug_mode
+    ) 
