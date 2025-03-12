@@ -48,7 +48,7 @@ async def start(message: types.Message):
         logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
         
         # URL для GitHub Pages
-        webapp_url = "https://askulibaba.github.io/telegram-dialogs-viewer/"
+        webapp_url = "https://web-production-921c.up.railway.app/"
         
         # Создаем клавиатуру с кнопкой для открытия веб-приложения
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
