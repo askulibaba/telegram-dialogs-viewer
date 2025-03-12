@@ -199,10 +199,10 @@ async def start(message: types.Message):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton(
             text="Открыть список диалогов",
-            web_app=WebAppInfo(url=WEBAPP_URL)
+            web_app=WebAppInfo(url=APP_URL)
         ))
         
-        logger.info(f"Отправляем приветственное сообщение с WEBAPP_URL: {WEBAPP_URL}")
+        logger.info(f"Отправляем приветственное сообщение с APP_URL: {APP_URL}")
         await message.answer(
             "Привет! Это бот для просмотра диалогов Telegram.\n"
             "Нажмите на кнопку ниже, чтобы открыть приложение.",
