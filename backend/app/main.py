@@ -3,10 +3,9 @@ import logging
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import asyncio
-from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher.webhook import SendMessage
+import json
+from aiogram import Bot
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 from app.core.config import settings
 from app.api import auth, dialogs
@@ -48,32 +47,8 @@ if os.path.exists(static_dir):
     # Подключаем статические файлы
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# Создаем бота и диспетчер
+# Создаем бота
 bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
-
-# Обработчик команды /start
-@dp.message_handler(commands=['start'])
-async def cmd_start(message: types.Message):
-    """
-    Обработчик команды /start
-    """
-    logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
-    
-    # Создаем кнопку для открытия веб-приложения
-    webapp_button = types.InlineKeyboardButton(
-        text="Открыть приложение",
-        web_app=types.WebAppInfo(url=settings.APP_URL)
-    )
-    keyboard = types.InlineKeyboardMarkup().add(webapp_button)
-    
-    # Отправляем приветственное сообщение
-    return SendMessage(
-        chat_id=message.chat.id,
-        text=f"Привет, {message.from_user.first_name}! Я бот для просмотра диалогов Telegram.",
-        reply_markup=keyboard
-    )
 
 # Эндпоинт для вебхука Telegram
 @app.post("/webhook")
@@ -87,17 +62,50 @@ async def webhook(request: Request):
     update_data = await request.json()
     logger.info(f"Данные запроса: {update_data}")
     
-    # Создаем объект Update
-    update = types.Update(**update_data)
-    
-    # Обрабатываем обновление
-    results = await dp.process_update(update)
-    
-    # Если есть результаты, отправляем их
-    if results:
-        return results[0]
+    # Проверяем, есть ли сообщение в обновлении
+    if 'message' in update_data:
+        message = update_data['message']
+        
+        # Проверяем, есть ли текст в сообщении
+        if 'text' in message:
+            text = message['text']
+            
+            # Обрабатываем команду /start
+            if text == '/start':
+                await handle_start_command(message)
     
     return Response()
+
+async def handle_start_command(message):
+    """
+    Обработчик команды /start
+    """
+    chat_id = message['chat']['id']
+    user_first_name = message.get('from', {}).get('first_name', 'пользователь')
+    user_id = message.get('from', {}).get('id')
+    
+    logger.info(f"Получена команда /start от пользователя {user_id}")
+    
+    # Создаем кнопку для открытия веб-приложения
+    keyboard = {
+        'inline_keyboard': [
+            [
+                {
+                    'text': 'Открыть приложение',
+                    'web_app': {
+                        'url': settings.APP_URL
+                    }
+                }
+            ]
+        ]
+    }
+    
+    # Отправляем приветственное сообщение
+    await bot.send_message(
+        chat_id=chat_id,
+        text=f"Привет, {user_first_name}! Я бот для просмотра диалогов Telegram.",
+        reply_markup=json.dumps(keyboard)
+    )
 
 @app.on_event("startup")
 async def on_startup():
