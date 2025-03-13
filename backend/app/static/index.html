@@ -109,6 +109,7 @@
                         script.setAttribute('data-size', 'large');
                         script.setAttribute('data-auth-url', `${window.location.origin}/api/v1/auth/telegram`);
                         script.setAttribute('data-request-access', 'write');
+                        script.setAttribute('data-onauth', 'telegramLogin');
                         
                         // Добавляем скрипт в контейнер
                         telegramLogin.appendChild(script);
@@ -323,11 +324,36 @@
             // Загружаем информацию о боте
             await loadBotInfo();
             
-            // Проверяем авторизацию
-            const token = localStorage.getItem('access_token');
-            if (token) {
+            // Проверяем параметры URL для авторизации
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            const userId = urlParams.get('user_id');
+            
+            if (token && userId) {
+                console.log('Получен токен из URL:', token);
+                // Сохраняем токен в localStorage
+                localStorage.setItem('access_token', token);
+                localStorage.setItem('user', JSON.stringify({
+                    id: userId,
+                    first_name: 'Пользователь',
+                    username: 'user'
+                }));
+                
+                // Очищаем URL от параметров
+                window.history.replaceState({}, document.title, window.location.pathname);
+                
+                // Обновляем интерфейс
                 updateUI(true);
+                
+                // Загружаем диалоги
                 loadDialogs();
+            } else {
+                // Проверяем авторизацию в localStorage
+                const savedToken = localStorage.getItem('access_token');
+                if (savedToken) {
+                    updateUI(true);
+                    loadDialogs();
+                }
             }
             
             // Обработчик для ручной авторизации
