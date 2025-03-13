@@ -5,7 +5,7 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 
 from app.core.config import settings
 from app.api import auth, dialogs
@@ -276,4 +276,52 @@ async def health():
     """
     Проверка работоспособности
     """
-    return {"status": "ok"} 
+    return {"status": "ok"}
+
+@app.get("/bot-info")
+async def bot_info():
+    """
+    Получение информации о боте
+    """
+    try:
+        me_url = f"{TELEGRAM_API_URL}/getMe"
+        response = await http_client.get(me_url)
+        response.raise_for_status()
+        me_data = response.json()
+        
+        webhook_info_url = f"{TELEGRAM_API_URL}/getWebhookInfo"
+        webhook_response = await http_client.get(webhook_info_url)
+        webhook_response.raise_for_status()
+        webhook_data = webhook_response.json()
+        
+        return JSONResponse({
+            "bot_info": me_data,
+            "webhook_info": webhook_data,
+            "app_url": settings.APP_URL,
+            "telegram_bot_token_prefix": settings.TELEGRAM_BOT_TOKEN[:10] + "..." if settings.TELEGRAM_BOT_TOKEN else None
+        })
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о боте: {e}", exc_info=True)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/send-test-message")
+async def send_test_message(request: Request):
+    """
+    Отправка тестового сообщения
+    """
+    try:
+        data = await request.json()
+        chat_id = data.get("chat_id")
+        
+        if not chat_id:
+            return JSONResponse({"error": "chat_id is required"}, status_code=400)
+        
+        result = await send_telegram_message(
+            chat_id=chat_id,
+            text="Это тестовое сообщение от бота Telegram Dialogs Viewer."
+        )
+        
+        return JSONResponse({"result": result})
+    except Exception as e:
+        logger.error(f"Ошибка при отправке тестового сообщения: {e}", exc_info=True)
+        return JSONResponse({"error": str(e)}, status_code=500) 

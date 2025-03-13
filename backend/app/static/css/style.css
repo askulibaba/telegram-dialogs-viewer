@@ -204,6 +204,56 @@ footer .container {
     text-decoration: underline;
 }
 
+/* Стили для отладочной секции */
+.debug-section {
+    margin: 40px 0;
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+}
+
+.debug-section h2 {
+    color: var(--primary-color);
+    margin-bottom: 15px;
+}
+
+.debug-info {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    overflow-x: auto;
+}
+
+.debug-info pre {
+    font-family: monospace;
+    font-size: 14px;
+    white-space: pre-wrap;
+}
+
+/* Стили для ручной авторизации */
+.manual-auth {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+.manual-auth p {
+    margin-bottom: 10px;
+}
+
+.manual-auth input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
 @media (max-width: 768px) {
     .dialog-list {
         grid-template-columns: 1fr;

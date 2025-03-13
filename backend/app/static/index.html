@@ -25,18 +25,18 @@
                 <p>Для просмотра диалогов необходимо авторизоваться через Telegram.</p>
                 <div class="auth-methods">
                     <div id="telegram-login">
-                        <script async src="https://telegram.org/js/telegram-widget.js?22" 
-                            data-telegram-login="EnigmaSecretMessages_bot" 
-                            data-size="large" 
-                            data-auth-url="/api/v1/auth/telegram" 
-                            data-request-access="write"
-                            data-onauth="telegramLogin(user)">
-                        </script>
+                        <!-- Виджет авторизации Telegram -->
                     </div>
                     <p>или</p>
                     <a href="tg://resolve?domain=EnigmaSecretMessages_bot" class="auth-button telegram-button">
                         Открыть бота в Telegram
                     </a>
+                    <p>или</p>
+                    <div class="manual-auth">
+                        <p>Введите ваш Telegram ID для тестирования:</p>
+                        <input type="text" id="telegram-id" placeholder="Ваш Telegram ID">
+                        <button id="manual-auth-button" class="auth-button">Авторизоваться</button>
+                    </div>
                 </div>
             </div>
         </section>
@@ -46,6 +46,13 @@
             <div id="error-message" class="error-message" style="display: none;"></div>
             <div id="loading" class="loading">Загрузка диалогов...</div>
             <div id="dialogs-list" class="dialog-list"></div>
+        </section>
+
+        <section id="debug-section" class="debug-section">
+            <h2>Отладочная информация</h2>
+            <div id="debug-info" class="debug-info">
+                <p>Загрузка информации о боте...</p>
+            </div>
         </section>
     </main>
 
@@ -58,6 +65,80 @@
             </div>
         </div>
     </footer>
+
+    <script>
+        // Функция для загрузки информации о боте
+        async function loadBotInfo() {
+            try {
+                const response = await fetch('/bot-info');
+                const data = await response.json();
+                
+                const debugInfo = document.getElementById('debug-info');
+                if (debugInfo) {
+                    debugInfo.innerHTML = `
+                        <h3>Информация о боте:</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+                
+                // Если бот успешно авторизован, добавляем виджет авторизации
+                if (data.bot_info && data.bot_info.ok) {
+                    const botUsername = data.bot_info.result.username;
+                    const telegramLogin = document.getElementById('telegram-login');
+                    
+                    if (telegramLogin) {
+                        const script = document.createElement('script');
+                        script.async = true;
+                        script.src = 'https://telegram.org/js/telegram-widget.js?22';
+                        script.setAttribute('data-telegram-login', botUsername);
+                        script.setAttribute('data-size', 'large');
+                        script.setAttribute('data-auth-url', '/api/v1/auth/telegram');
+                        script.setAttribute('data-request-access', 'write');
+                        script.setAttribute('data-onauth', 'telegramLogin(user)');
+                        
+                        telegramLogin.appendChild(script);
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка при загрузке информации о боте:', error);
+                const debugInfo = document.getElementById('debug-info');
+                if (debugInfo) {
+                    debugInfo.innerHTML = `
+                        <h3>Ошибка при загрузке информации о боте:</h3>
+                        <pre>${error.message}</pre>
+                    `;
+                }
+            }
+        }
+        
+        // Загружаем информацию о боте при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            loadBotInfo();
+            
+            // Обработчик для ручной авторизации
+            const manualAuthButton = document.getElementById('manual-auth-button');
+            if (manualAuthButton) {
+                manualAuthButton.addEventListener('click', function() {
+                    const telegramId = document.getElementById('telegram-id').value;
+                    if (telegramId) {
+                        // Создаем тестовый объект пользователя
+                        const user = {
+                            id: telegramId,
+                            first_name: 'Test User',
+                            username: 'test_user',
+                            auth_date: Math.floor(Date.now() / 1000),
+                            hash: 'test_hash' // В реальности этот хеш должен быть валидным
+                        };
+                        
+                        // Вызываем функцию авторизации
+                        window.telegramLogin(user);
+                    } else {
+                        alert('Пожалуйста, введите Telegram ID');
+                    }
+                });
+            }
+        });
+    </script>
 
     <script src="/static/js/app.js"></script>
 </body>
