@@ -13,6 +13,7 @@
         <div class="container">
             <div class="logo">Telegram Dialogs Viewer</div>
             <div id="user-info" style="display: none;">
+                <span id="user-name"></span>
                 <button id="logout-button" class="auth-button">Выйти</button>
             </div>
         </div>
@@ -53,6 +54,14 @@
             <div id="debug-info" class="debug-info">
                 <p>Загрузка информации о боте...</p>
             </div>
+            <div class="auth-debug">
+                <h3>Отладка авторизации</h3>
+                <div id="auth-debug-info" class="debug-info">
+                    <p>Нет данных об авторизации</p>
+                </div>
+                <button id="check-auth-button" class="auth-button">Проверить авторизацию</button>
+                <button id="clear-auth-button" class="auth-button">Очистить авторизацию</button>
+            </div>
             <div class="webhook-controls">
                 <h3>Управление вебхуком</h3>
                 <button id="set-webhook-button" class="auth-button">Установить вебхук</button>
@@ -63,6 +72,10 @@
                 <h3>Отправка тестового сообщения</h3>
                 <input type="text" id="test-chat-id" placeholder="ID чата для тестового сообщения">
                 <button id="send-test-message-button" class="auth-button">Отправить тестовое сообщение</button>
+            </div>
+            <div class="direct-auth">
+                <h3>Прямая авторизация</h3>
+                <button id="direct-auth-button" class="auth-button">Авторизоваться напрямую</button>
             </div>
         </section>
     </main>
@@ -204,6 +217,8 @@
         // Функция для ручной авторизации
         async function manualAuth(userId) {
             try {
+                console.log('Начинаем ручную авторизацию для ID:', userId);
+                
                 const response = await fetch('/api/v1/auth/manual', {
                     method: 'POST',
                     headers: {
@@ -215,6 +230,12 @@
                         username: 'test_user'
                     })
                 });
+                
+                console.log('Получен ответ от сервера:', response);
+                
+                if (!response.ok) {
+                    throw new Error(`Ошибка при авторизации: ${response.status} ${response.statusText}`);
+                }
                 
                 const data = await response.json();
                 console.log('Результат ручной авторизации:', data);
@@ -229,12 +250,82 @@
                     
                     // Загружаем диалоги
                     loadDialogs();
+                    
+                    // Обновляем отладочную информацию
+                    updateAuthDebugInfo();
+                    
+                    return data;
+                } else {
+                    throw new Error('Токен не получен');
                 }
-                
-                return data;
             } catch (error) {
                 console.error('Ошибка при ручной авторизации:', error);
+                alert('Ошибка при ручной авторизации: ' + error.message);
                 return null;
+            }
+        }
+        
+        // Функция для прямой авторизации (без запроса к серверу)
+        function directAuth() {
+            const userId = prompt('Введите ваш Telegram ID для прямой авторизации:');
+            if (!userId) return;
+            
+            console.log('Прямая авторизация для ID:', userId);
+            
+            // Создаем токен
+            const token = `test_token_${userId}`;
+            
+            // Сохраняем токен в localStorage
+            localStorage.setItem('access_token', token);
+            localStorage.setItem('user', JSON.stringify({
+                id: userId,
+                first_name: 'Тестовый пользователь',
+                username: 'test_user'
+            }));
+            
+            // Обновляем интерфейс
+            updateUI(true);
+            
+            // Загружаем диалоги
+            loadDialogs();
+            
+            // Обновляем отладочную информацию
+            updateAuthDebugInfo();
+        }
+        
+        // Функция для обновления отладочной информации об авторизации
+        function updateAuthDebugInfo() {
+            const authDebugInfo = document.getElementById('auth-debug-info');
+            if (!authDebugInfo) return;
+            
+            const token = localStorage.getItem('access_token');
+            const user = localStorage.getItem('user');
+            
+            if (token && user) {
+                try {
+                    const userData = JSON.parse(user);
+                    authDebugInfo.innerHTML = `
+                        <h4>Токен авторизации:</h4>
+                        <pre>${token}</pre>
+                        <h4>Данные пользователя:</h4>
+                        <pre>${JSON.stringify(userData, null, 2)}</pre>
+                    `;
+                    
+                    // Обновляем имя пользователя в шапке
+                    const userNameElement = document.getElementById('user-name');
+                    if (userNameElement) {
+                        userNameElement.textContent = userData.first_name || userData.username || userData.id;
+                    }
+                } catch (error) {
+                    authDebugInfo.innerHTML = `
+                        <h4>Токен авторизации:</h4>
+                        <pre>${token}</pre>
+                        <h4>Ошибка при парсинге данных пользователя:</h4>
+                        <pre>${error.message}</pre>
+                    `;
+                }
+            } else {
+                authDebugInfo.innerHTML = '<p>Нет данных об авторизации</p>';
             }
         }
         
@@ -272,17 +363,22 @@
                     throw new Error('Не найден токен авторизации');
                 }
                 
+                console.log('Загрузка диалогов с токеном:', token);
+                
                 const response = await fetch('/api/v1/dialogs', {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
                 });
                 
+                console.log('Ответ от сервера при загрузке диалогов:', response);
+                
                 if (!response.ok) {
                     throw new Error(`Ошибка при загрузке диалогов: ${response.status} ${response.statusText}`);
                 }
                 
                 const data = await response.json();
+                console.log('Полученные диалоги:', data);
                 
                 if (data.length === 0) {
                     dialogsList.innerHTML = '<p>У вас нет диалогов</p>';
@@ -317,10 +413,13 @@
             localStorage.removeItem('access_token');
             localStorage.removeItem('user');
             updateUI(false);
+            updateAuthDebugInfo();
         }
         
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', async function() {
+            console.log('Страница загружена, начинаем инициализацию...');
+            
             // Загружаем информацию о боте
             await loadBotInfo();
             
@@ -328,6 +427,8 @@
             const urlParams = new URLSearchParams(window.location.search);
             const token = urlParams.get('token');
             const userId = urlParams.get('user_id');
+            
+            console.log('Параметры URL:', { token, userId });
             
             if (token && userId) {
                 console.log('Получен токен из URL:', token);
@@ -347,12 +448,18 @@
                 
                 // Загружаем диалоги
                 loadDialogs();
+                
+                // Обновляем отладочную информацию
+                updateAuthDebugInfo();
             } else {
                 // Проверяем авторизацию в localStorage
                 const savedToken = localStorage.getItem('access_token');
+                console.log('Сохраненный токен:', savedToken);
+                
                 if (savedToken) {
                     updateUI(true);
                     loadDialogs();
+                    updateAuthDebugInfo();
                 }
             }
             
@@ -405,6 +512,27 @@
                     }
                 });
             }
+            
+            // Обработчик для проверки авторизации
+            const checkAuthButton = document.getElementById('check-auth-button');
+            if (checkAuthButton) {
+                checkAuthButton.addEventListener('click', updateAuthDebugInfo);
+            }
+            
+            // Обработчик для очистки авторизации
+            const clearAuthButton = document.getElementById('clear-auth-button');
+            if (clearAuthButton) {
+                clearAuthButton.addEventListener('click', logout);
+            }
+            
+            // Обработчик для прямой авторизации
+            const directAuthButton = document.getElementById('direct-auth-button');
+            if (directAuthButton) {
+                directAuthButton.addEventListener('click', directAuth);
+            }
+            
+            // Обновляем отладочную информацию
+            updateAuthDebugInfo();
         });
         
         // Глобальная функция для обработки авторизации через Telegram
@@ -419,9 +547,12 @@
                 },
                 body: JSON.stringify(user)
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('Ответ сервера (статус):', response.status);
+                return response.json();
+            })
             .then(data => {
-                console.log('Ответ сервера:', data);
+                console.log('Ответ сервера (данные):', data);
                 
                 if (data.access_token) {
                     // Сохраняем токен в localStorage
@@ -433,6 +564,9 @@
                     
                     // Загружаем диалоги
                     loadDialogs();
+                    
+                    // Обновляем отладочную информацию
+                    updateAuthDebugInfo();
                 } else {
                     console.error('Ошибка авторизации:', data.error || 'Неизвестная ошибка');
                     alert('Ошибка авторизации: ' + (data.error || 'Неизвестная ошибка'));

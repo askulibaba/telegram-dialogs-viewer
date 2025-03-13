@@ -371,6 +371,8 @@ async def manual_auth(request: Request):
         if not user_id:
             return JSONResponse({"error": "id is required"}, status_code=400)
         
+        logger.info(f"Ручная авторизация для пользователя {user_id}")
+        
         # Создаем тестовый токен
         access_token = f"test_token_{user_id}"
         
@@ -385,4 +387,36 @@ async def manual_auth(request: Request):
         })
     except Exception as e:
         logger.error(f"Ошибка при ручной авторизации: {e}", exc_info=True)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/v1/auth/telegram")
+async def telegram_auth(request: Request):
+    """
+    Авторизация через Telegram Login Widget
+    """
+    try:
+        data = await request.json()
+        user_id = data.get("id")
+        
+        if not user_id:
+            return JSONResponse({"error": "id is required"}, status_code=400)
+        
+        logger.info(f"Авторизация через Telegram для пользователя {user_id}")
+        
+        # Создаем тестовый токен
+        access_token = f"telegram_token_{user_id}"
+        
+        return JSONResponse({
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user_id,
+                "first_name": data.get("first_name", ""),
+                "last_name": data.get("last_name", ""),
+                "username": data.get("username", ""),
+                "photo_url": data.get("photo_url", "")
+            }
+        })
+    except Exception as e:
+        logger.error(f"Ошибка при авторизации через Telegram: {e}", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500) 

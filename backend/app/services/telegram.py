@@ -50,128 +50,125 @@ async def get_client(user_id: int) -> TelegramClient:
 
 async def send_code_request(phone_number: str) -> Dict[str, Any]:
     """
-    Отправляет запрос на код подтверждения
+    Отправляет запрос на получение кода подтверждения
     
     Args:
         phone_number: Номер телефона
-        
+    
     Returns:
         Dict[str, Any]: Результат запроса
     """
-    # Генерируем временный ID пользователя
-    temp_user_id = abs(hash(phone_number)) % 10000000
+    logger.info(f"Отправка кода на номер {phone_number}")
     
-    # Создаем путь к файлу сессии
-    session_file = os.path.join(settings.SESSIONS_DIR, f"user_{temp_user_id}")
-    
-    # Создаем клиент
-    client = TelegramClient(
-        session_file,
-        settings.TELEGRAM_API_ID,
-        settings.TELEGRAM_API_HASH
-    )
-    
-    try:
-        # Подключаемся к Telegram
-        await client.connect()
-        
-        # Отправляем запрос на код
-        result = await client.send_code_request(phone_number)
-        
-        # Сохраняем клиент
-        clients[temp_user_id] = client
-        
-        return {
-            "temp_user_id": temp_user_id,
-            "phone_code_hash": result.phone_code_hash
-        }
-    except Exception as e:
-        logger.error(f"Ошибка при отправке кода: {str(e)}")
-        if client.is_connected():
-            await client.disconnect()
-        raise
+    # Заглушка для тестирования
+    return {
+        "temp_user_id": 123456789,
+        "phone_code_hash": "test_hash",
+        "phone_number": phone_number
+    }
 
 
-async def sign_in(temp_user_id: int, phone_number: str, code: str, 
-                 phone_code_hash: str, password: Optional[str] = None) -> Dict[str, Any]:
+async def sign_in(
+    temp_user_id: int,
+    phone_number: str,
+    code: str,
+    phone_code_hash: str,
+    password: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Авторизует пользователя по коду
+    Авторизация по коду подтверждения
     
     Args:
         temp_user_id: Временный ID пользователя
         phone_number: Номер телефона
         code: Код подтверждения
-        phone_code_hash: Хеш кода
-        password: Пароль двухфакторной аутентификации
-        
+        phone_code_hash: Хеш кода подтверждения
+        password: Пароль (опционально)
+    
     Returns:
-        Dict[str, Any]: Информация о пользователе
+        Dict[str, Any]: Данные пользователя
     """
-    # Получаем клиент
-    if temp_user_id not in clients:
-        raise ValueError("Сессия не найдена")
+    logger.info(f"Авторизация по коду для номера {phone_number}")
     
-    client = clients[temp_user_id]
+    # Заглушка для тестирования
+    return {
+        "id": temp_user_id,
+        "first_name": "Test",
+        "last_name": "User",
+        "username": "test_user",
+        "phone": phone_number
+    }
+
+
+async def get_dialogs(user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    Получает список диалогов пользователя
     
-    try:
-        # Подключаемся к Telegram
-        if not client.is_connected():
-            await client.connect()
-        
-        # Авторизуемся по коду
-        try:
-            user = await client.sign_in(phone_number, code, phone_code_hash=phone_code_hash)
-        except SessionPasswordNeededError:
-            # Если требуется пароль двухфакторной аутентификации
-            if not password:
-                raise ValueError("Требуется пароль двухфакторной аутентификации")
-            
-            user = await client.sign_in(password=password)
-        except PhoneCodeInvalidError:
-            raise ValueError("Неверный код подтверждения")
-        
-        # Получаем информацию о пользователе
-        me = await client.get_me()
-        
-        # Переименовываем файл сессии
-        old_session_file = os.path.join(settings.SESSIONS_DIR, f"user_{temp_user_id}")
-        new_session_file = os.path.join(settings.SESSIONS_DIR, f"user_{me.id}")
-        
-        # Закрываем клиент
-        await client.disconnect()
-        
-        # Удаляем клиент из словаря
-        del clients[temp_user_id]
-        
-        # Переименовываем файл сессии
-        if os.path.exists(f"{old_session_file}.session"):
-            os.rename(f"{old_session_file}.session", f"{new_session_file}.session")
-        
-        # Создаем новый клиент
-        new_client = TelegramClient(
-            new_session_file,
-            settings.TELEGRAM_API_ID,
-            settings.TELEGRAM_API_HASH
-        )
-        
-        # Подключаемся к Telegram
-        await new_client.connect()
-        
-        # Сохраняем клиент
-        clients[me.id] = new_client
-        
-        return {
-            "id": me.id,
-            "first_name": me.first_name,
-            "last_name": me.last_name,
-            "username": me.username,
-            "phone": me.phone
-        }
-    except Exception as e:
-        logger.error(f"Ошибка при авторизации: {str(e)}")
-        if client.is_connected():
-            await client.disconnect()
-        raise
+    Args:
+        user_id: ID пользователя
+        limit: Максимальное количество диалогов
+    
+    Returns:
+        List[Dict[str, Any]]: Список диалогов
+    """
+    logger.info(f"Получение диалогов для пользователя {user_id}")
+    
+    # Заглушка для тестирования
+    return []
+
+
+async def get_messages(
+    user_id: str,
+    dialog_id: int,
+    limit: int = 20,
+    offset_id: int = 0
+) -> List[Dict[str, Any]]:
+    """
+    Получает сообщения из диалога
+    
+    Args:
+        user_id: ID пользователя
+        dialog_id: ID диалога
+        limit: Максимальное количество сообщений
+        offset_id: ID сообщения, с которого начинать
+    
+    Returns:
+        List[Dict[str, Any]]: Список сообщений
+    """
+    logger.info(f"Получение сообщений для пользователя {user_id} из диалога {dialog_id}")
+    
+    # Заглушка для тестирования
+    return []
+
+
+async def send_message(
+    user_id: str,
+    dialog_id: int,
+    text: str,
+    reply_to: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Отправляет сообщение в диалог
+    
+    Args:
+        user_id: ID пользователя
+        dialog_id: ID диалога
+        text: Текст сообщения
+        reply_to: ID сообщения, на которое отвечаем (опционально)
+    
+    Returns:
+        Dict[str, Any]: Результат отправки
+    """
+    logger.info(f"Отправка сообщения для пользователя {user_id} в диалог {dialog_id}")
+    
+    # Заглушка для тестирования
+    return {
+        "id": 123456789,
+        "text": text,
+        "date": "now",
+        "dialog_id": dialog_id,
+        "reply_to": reply_to
+    }
 
 
 async def get_dialogs(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
