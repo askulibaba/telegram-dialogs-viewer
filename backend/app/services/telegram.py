@@ -27,27 +27,70 @@ async def get_client(user_id: int) -> TelegramClient:
     Returns:
         TelegramClient: Клиент Telegram
     """
+    logger.info(f"Запрос на получение клиента для пользователя {user_id}")
+    
+    # Проверяем, есть ли клиент в кэше
     if user_id in clients:
-        return clients[user_id]
+        logger.info(f"Клиент для пользователя {user_id} найден в кэше")
+        client = clients[user_id]
+        
+        # Проверяем, подключен ли клиент
+        try:
+            if not client.is_connected():
+                logger.info(f"Клиент не подключен, подключаемся")
+                await client.connect()
+                
+            # Проверяем авторизацию
+            if await client.is_user_authorized():
+                logger.info(f"Клиент авторизован, возвращаем его")
+                return client
+            else:
+                logger.warning(f"Клиент не авторизован, создаем новый")
+                # Если клиент не авторизован, удаляем его из кэша
+                del clients[user_id]
+        except Exception as e:
+            logger.error(f"Ошибка при проверке клиента: {str(e)}")
+            # Если произошла ошибка, удаляем клиент из кэша
+            del clients[user_id]
     
     # Создаем путь к файлу сессии
     session_file = os.path.join(settings.SESSIONS_DIR, f"user_{user_id}")
+    logger.info(f"Путь к файлу сессии: {session_file}")
+    
+    # Проверяем существование файла сессии
+    if not os.path.exists(f"{session_file}.session"):
+        logger.error(f"Файл сессии не найден: {session_file}.session")
+        raise ValueError(f"Сессия для пользователя {user_id} не найдена")
     
     # Создаем клиент
+    logger.info(f"Создаем клиент для пользователя {user_id}")
     client = TelegramClient(
         session_file,
         settings.TELEGRAM_API_ID,
         settings.TELEGRAM_API_HASH
     )
     
-    # Проверяем, авторизован ли клиент
-    if not await client.is_user_authorized():
-        raise ValueError("Пользователь не авторизован")
-    
-    # Сохраняем клиент
-    clients[user_id] = client
-    
-    return client
+    try:
+        # Подключаемся к Telegram
+        logger.info(f"Подключаемся к Telegram")
+        await client.connect()
+        
+        # Проверяем, авторизован ли клиент
+        logger.info(f"Проверяем авторизацию клиента")
+        if not await client.is_user_authorized():
+            logger.error(f"Пользователь {user_id} не авторизован")
+            raise ValueError("Пользователь не авторизован")
+        
+        # Сохраняем клиент
+        logger.info(f"Сохраняем клиент в кэш")
+        clients[user_id] = client
+        
+        return client
+    except Exception as e:
+        # Если произошла ошибка, закрываем клиент
+        logger.error(f"Ошибка при создании клиента: {str(e)}")
+        await client.disconnect()
+        raise
 
 
 async def send_code_request(phone_number: str) -> Dict[str, Any]:
@@ -147,6 +190,7 @@ async def sign_in(
         
         # Получаем информацию о пользователе
         me = await client.get_me()
+        logger.info(f"Успешная авторизация пользователя: {me.id}")
         
         # Форматируем результат
         result = {
@@ -160,8 +204,23 @@ async def sign_in(
         # Перемещаем сессию из временной в постоянную
         temp_session_file = os.path.join(settings.SESSIONS_DIR, f"temp_user_{temp_user_id}")
         permanent_session_file = os.path.join(settings.SESSIONS_DIR, f"user_{me.id}")
+        logger.info(f"Перемещаем сессию из {temp_session_file} в {permanent_session_file}")
+        
         if os.path.exists(f"{temp_session_file}.session"):
-            os.rename(f"{temp_session_file}.session", f"{permanent_session_file}.session")
+            try:
+                os.rename(f"{temp_session_file}.session", f"{permanent_session_file}.session")
+                logger.info(f"Сессия успешно перемещена")
+            except Exception as e:
+                logger.error(f"Ошибка при перемещении сессии: {str(e)}")
+                # Если не удалось переместить, копируем
+                import shutil
+                try:
+                    shutil.copy(f"{temp_session_file}.session", f"{permanent_session_file}.session")
+                    logger.info(f"Сессия успешно скопирована")
+                except Exception as copy_error:
+                    logger.error(f"Ошибка при копировании сессии: {str(copy_error)}")
+        else:
+            logger.warning(f"Файл сессии не найден: {temp_session_file}.session")
         
         # Обновляем словарь клиентов
         clients[me.id] = client
@@ -191,14 +250,19 @@ async def get_dialogs(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
     
     try:
         # Получаем клиент
+        logger.info(f"Пытаемся получить клиент для пользователя {user_id}")
         client = await get_client(user_id)
         
         # Подключаемся к Telegram, если не подключены
+        logger.info(f"Проверяем подключение клиента")
         if not client.is_connected():
+            logger.info(f"Клиент не подключен, подключаемся")
             await client.connect()
         
         # Получаем диалоги
+        logger.info(f"Запрашиваем диалоги с лимитом {limit}")
         dialogs = await client.get_dialogs(limit=limit)
+        logger.info(f"Получено {len(dialogs)} диалогов")
         
         # Форматируем результат
         result = []
@@ -240,10 +304,12 @@ async def get_dialogs(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
                 "unread_count": dialog.unread_count
             })
         
+        logger.info(f"Возвращаем {len(result)} диалогов")
         return result
     except Exception as e:
         logger.error(f"Ошибка при получении диалогов: {str(e)}")
         # В случае ошибки возвращаем тестовые данные
+        logger.info(f"Возвращаем тестовые диалоги из-за ошибки: {str(e)}")
         return await get_test_dialogs(user_id)
 
 

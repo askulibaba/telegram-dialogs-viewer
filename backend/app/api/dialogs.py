@@ -59,12 +59,29 @@ async def list_dialogs(current_user = Depends(get_current_user)):
     Получает список диалогов пользователя
     """
     try:
-        logger.info(f"Получение диалогов для пользователя {current_user['id']}")
+        user_id = current_user['id']
+        logger.info(f"Получение диалогов для пользователя {user_id}")
+        
+        # Преобразуем ID пользователя в целое число
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            logger.error(f"Невозможно преобразовать ID пользователя '{user_id}' в целое число")
+            raise HTTPException(status_code=400, detail="Неверный формат ID пользователя")
         
         # Получаем диалоги из Telegram
-        dialogs = await get_dialogs(int(current_user['id']))
-        
-        return dialogs
+        try:
+            dialogs = await get_dialogs(user_id_int)
+            logger.info(f"Получено {len(dialogs)} диалогов для пользователя {user_id}")
+            return dialogs
+        except ValueError as e:
+            logger.error(f"Ошибка при получении диалогов: {e}")
+            if "Сессия для пользователя" in str(e) and "не найдена" in str(e):
+                raise HTTPException(status_code=401, detail="Требуется авторизация в Telegram")
+            elif "Пользователь не авторизован" in str(e):
+                raise HTTPException(status_code=401, detail="Требуется авторизация в Telegram")
+            else:
+                raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Ошибка при получении диалогов: {e}")
         raise HTTPException(status_code=500, detail=str(e))

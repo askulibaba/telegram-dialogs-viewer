@@ -66,8 +66,11 @@ def verify_token(token: str) -> Optional[TokenData]:
         # Декодируем токен
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         
-        # Получаем ID пользователя
+        # Получаем ID пользователя (проверяем оба возможных ключа)
         user_id = payload.get("user_id")
+        if user_id is None:
+            user_id = payload.get("sub")  # Альтернативный ключ
+        
         if user_id is None:
             return None
         
