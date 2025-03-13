@@ -469,10 +469,10 @@
                         
                         // Сохраняем токен и данные пользователя
                         localStorage.setItem('access_token', data.access_token);
-                        localStorage.setItem('user_data', JSON.stringify(data.user));
+                        localStorage.setItem('user', JSON.stringify(data.user));
                         
                         // Обновляем интерфейс
-                        updateAuthUI();
+                        updateUI(true);
                         
                         // Загружаем диалоги
                         loadDialogs();
@@ -525,10 +525,10 @@
                         
                         // Сохраняем токен и данные пользователя
                         localStorage.setItem('access_token', data.access_token);
-                        localStorage.setItem('user_data', JSON.stringify(data.user));
+                        localStorage.setItem('user', JSON.stringify(data.user));
                         
                         // Обновляем интерфейс
-                        updateAuthUI();
+                        updateUI(true);
                         
                         // Загружаем диалоги
                         loadDialogs();
