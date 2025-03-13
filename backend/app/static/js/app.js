@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (token) {
             // Если есть токен, пытаемся загрузить диалоги
             showDialogsSection();
-            fetchDialogs();
+            fetchDialogs(token);
         } else {
             // Если нет токена, показываем секцию авторизации
             showAuthSection();
@@ -66,11 +66,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Загрузить диалоги
-    async function fetchDialogs() {
+    async function fetchDialogs(token) {
         showLoading();
         hideError();
 
-        const token = localStorage.getItem('access_token');
         if (!token) {
             hideLoading();
             showAuthSection();
@@ -78,12 +77,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/dialogs/`, {
+            // Используем полный URL с текущим протоколом (HTTPS)
+            const apiUrl = `${window.location.origin}/api/v1/dialogs`;
+            console.log('Загрузка диалогов с URL:', apiUrl);
+            
+            const response = await fetch(apiUrl, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
             });
-
+            
             if (!response.ok) {
                 if (response.status === 401) {
                     // Если токен недействителен, показываем секцию авторизации
@@ -91,12 +94,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     showAuthSection();
                     throw new Error('Необходима авторизация');
                 }
-                throw new Error('Ошибка при загрузке диалогов');
+                throw new Error(`Ошибка при загрузке диалогов: ${response.status} ${response.statusText}`);
             }
-
+            
             const data = await response.json();
             renderDialogs(data);
         } catch (error) {
+            console.error('Ошибка при загрузке диалогов:', error);
             showError(error.message);
         } finally {
             hideLoading();
@@ -160,8 +164,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Обработчик авторизации через Telegram
     function handleTelegramAuth(user) {
+        // Используем полный URL с текущим протоколом (HTTPS)
+        const apiUrl = `${window.location.origin}/api/v1/auth/telegram`;
+        console.log('URL для авторизации через Telegram:', apiUrl);
+        
         // Отправляем данные на сервер для проверки
-        fetch(`${API_BASE_URL}/auth/telegram`, {
+        fetch(apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -179,9 +187,10 @@ document.addEventListener('DOMContentLoaded', function() {
             localStorage.setItem('access_token', data.access_token);
             // Показываем диалоги
             showDialogsSection();
-            fetchDialogs();
+            fetchDialogs(data.access_token);
         })
         .catch(error => {
+            console.error('Ошибка при авторизации через Telegram:', error);
             showError(error.message);
         });
     }
