@@ -25,19 +25,63 @@
             <div class="auth-card">
                 <h2>Авторизация</h2>
                 <p>Для просмотра диалогов необходимо авторизоваться через Telegram.</p>
-                <div class="auth-methods">
-                    <div id="telegram-login">
-                        <!-- Виджет авторизации Telegram будет добавлен динамически -->
+                
+                <!-- Вкладки авторизации -->
+                <div class="auth-tabs">
+                    <button class="auth-tab-button active" data-tab="telegram-tab">Быстрый вход</button>
+                    <button class="auth-tab-button" data-tab="phone-tab">Вход по телефону</button>
+                    <button class="auth-tab-button" data-tab="manual-tab">Тестовый вход</button>
+                </div>
+                
+                <div class="auth-tab-content">
+                    <!-- Вкладка с быстрым входом через Telegram -->
+                    <div id="telegram-tab" class="auth-tab-pane active">
+                        <div class="auth-methods">
+                            <div id="telegram-login">
+                                <!-- Виджет авторизации Telegram будет добавлен динамически -->
+                            </div>
+                            <p>или</p>
+                            <a href="tg://resolve?domain=EnigmaSecretMessages_bot" class="auth-button telegram-button">
+                                Открыть бота в Telegram
+                            </a>
+                        </div>
                     </div>
-                    <p>или</p>
-                    <a href="tg://resolve?domain=EnigmaSecretMessages_bot" class="auth-button telegram-button">
-                        Открыть бота в Telegram
-                    </a>
-                    <p>или</p>
-                    <div class="manual-auth">
-                        <p>Введите ваш Telegram ID для тестирования:</p>
-                        <input type="text" id="telegram-id" placeholder="Ваш Telegram ID">
-                        <button id="manual-auth-button" class="auth-button">Авторизоваться</button>
+                    
+                    <!-- Вкладка с входом по телефону -->
+                    <div id="phone-tab" class="auth-tab-pane">
+                        <div class="phone-auth">
+                            <!-- Шаг 1: Ввод номера телефона -->
+                            <div id="phone-step" class="auth-step">
+                                <p>Введите ваш номер телефона в международном формате:</p>
+                                <input type="tel" id="phone-number" placeholder="+79001234567" class="auth-input">
+                                <button id="send-code-button" class="auth-button">Получить код</button>
+                            </div>
+                            
+                            <!-- Шаг 2: Ввод кода подтверждения -->
+                            <div id="code-step" class="auth-step" style="display: none;">
+                                <p>Введите код подтверждения, отправленный в Telegram:</p>
+                                <input type="text" id="confirmation-code" placeholder="12345" class="auth-input">
+                                <button id="verify-code-button" class="auth-button">Подтвердить код</button>
+                                <button id="back-to-phone-button" class="auth-button secondary">Назад</button>
+                            </div>
+                            
+                            <!-- Шаг 3: Ввод пароля (для 2FA) -->
+                            <div id="password-step" class="auth-step" style="display: none;">
+                                <p>Введите пароль двухфакторной аутентификации:</p>
+                                <input type="password" id="auth-password" placeholder="Пароль" class="auth-input">
+                                <button id="verify-password-button" class="auth-button">Войти</button>
+                                <button id="back-to-code-button" class="auth-button secondary">Назад</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Вкладка с тестовым входом -->
+                    <div id="manual-tab" class="auth-tab-pane">
+                        <div class="manual-auth">
+                            <p>Введите ваш Telegram ID для тестирования:</p>
+                            <input type="text" id="telegram-id" placeholder="Ваш Telegram ID" class="auth-input">
+                            <button id="manual-auth-button" class="auth-button">Авторизоваться</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -289,6 +333,232 @@
             updateAuthDebugInfo();
         }
         
+        // Объект для хранения данных авторизации по телефону
+        const phoneAuthData = {
+            temp_user_id: null,
+            phone: null,
+            phone_code_hash: null
+        };
+        
+        // Инициализация вкладок авторизации
+        function initAuthTabs() {
+            const tabButtons = document.querySelectorAll('.auth-tab-button');
+            const tabPanes = document.querySelectorAll('.auth-tab-pane');
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Удаляем активный класс у всех кнопок и панелей
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabPanes.forEach(pane => pane.classList.remove('active'));
+                    
+                    // Добавляем активный класс текущей кнопке
+                    this.classList.add('active');
+                    
+                    // Показываем соответствующую панель
+                    const tabId = this.getAttribute('data-tab');
+                    document.getElementById(tabId).classList.add('active');
+                });
+            });
+        }
+        
+        // Обработчик для отправки кода
+        function initPhoneAuth() {
+            const sendCodeButton = document.getElementById('send-code-button');
+            const verifyCodeButton = document.getElementById('verify-code-button');
+            const verifyPasswordButton = document.getElementById('verify-password-button');
+            const backToPhoneButton = document.getElementById('back-to-phone-button');
+            const backToCodeButton = document.getElementById('back-to-code-button');
+            
+            if (sendCodeButton) {
+                sendCodeButton.addEventListener('click', async function() {
+                    const phoneNumber = document.getElementById('phone-number').value;
+                    if (!phoneNumber) {
+                        alert('Пожалуйста, введите номер телефона');
+                        return;
+                    }
+                    
+                    try {
+                        // Показываем индикатор загрузки
+                        sendCodeButton.disabled = true;
+                        sendCodeButton.textContent = 'Отправка...';
+                        
+                        // Отправляем запрос на сервер
+                        const response = await fetch(`${window.location.origin}/api/v1/auth/send-code`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                phone_number: phoneNumber
+                            })
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || `Ошибка при отправке кода: ${response.status}`);
+                        }
+                        
+                        const data = await response.json();
+                        console.log('Результат отправки кода:', data);
+                        
+                        // Сохраняем данные
+                        phoneAuthData.phone = phoneNumber;
+                        phoneAuthData.phone_code_hash = data.phone_code_hash;
+                        phoneAuthData.temp_user_id = data.temp_user_id;
+                        
+                        // Показываем сообщение пользователю
+                        if (data.message) {
+                            alert(data.message);
+                        }
+                        
+                        // Переходим к следующему шагу
+                        document.getElementById('phone-step').style.display = 'none';
+                        document.getElementById('code-step').style.display = 'block';
+                    } catch (error) {
+                        console.error('Ошибка при отправке кода:', error);
+                        alert(`Ошибка при отправке кода: ${error.message}`);
+                    } finally {
+                        // Восстанавливаем кнопку
+                        sendCodeButton.disabled = false;
+                        sendCodeButton.textContent = 'Получить код';
+                    }
+                });
+            }
+            
+            if (verifyCodeButton) {
+                verifyCodeButton.addEventListener('click', async function() {
+                    const code = document.getElementById('confirmation-code').value;
+                    if (!code) {
+                        alert('Пожалуйста, введите код подтверждения');
+                        return;
+                    }
+                    
+                    try {
+                        // Показываем индикатор загрузки
+                        verifyCodeButton.disabled = true;
+                        verifyCodeButton.textContent = 'Проверка...';
+                        
+                        // Отправляем запрос на сервер
+                        const response = await fetch(`${window.location.origin}/api/v1/auth/sign-in`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                temp_user_id: phoneAuthData.temp_user_id,
+                                phone_number: phoneAuthData.phone,
+                                code: code,
+                                phone_code_hash: phoneAuthData.phone_code_hash
+                            })
+                        });
+                        
+                        if (response.status === 401) {
+                            // Требуется двухфакторная аутентификация
+                            document.getElementById('code-step').style.display = 'none';
+                            document.getElementById('password-step').style.display = 'block';
+                            return;
+                        }
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || `Ошибка при проверке кода: ${response.status}`);
+                        }
+                        
+                        const data = await response.json();
+                        console.log('Результат авторизации:', data);
+                        
+                        // Сохраняем токен и данные пользователя
+                        localStorage.setItem('access_token', data.access_token);
+                        localStorage.setItem('user_data', JSON.stringify(data.user));
+                        
+                        // Обновляем интерфейс
+                        updateAuthUI();
+                        
+                        // Загружаем диалоги
+                        loadDialogs();
+                    } catch (error) {
+                        console.error('Ошибка при проверке кода:', error);
+                        alert(`Ошибка при проверке кода: ${error.message}`);
+                    } finally {
+                        // Восстанавливаем кнопку
+                        verifyCodeButton.disabled = false;
+                        verifyCodeButton.textContent = 'Подтвердить код';
+                    }
+                });
+            }
+            
+            if (verifyPasswordButton) {
+                verifyPasswordButton.addEventListener('click', async function() {
+                    const password = document.getElementById('auth-password').value;
+                    if (!password) {
+                        alert('Пожалуйста, введите пароль');
+                        return;
+                    }
+                    
+                    try {
+                        // Показываем индикатор загрузки
+                        verifyPasswordButton.disabled = true;
+                        verifyPasswordButton.textContent = 'Проверка...';
+                        
+                        // Отправляем запрос на сервер
+                        const response = await fetch(`${window.location.origin}/api/v1/auth/sign-in-2fa`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                temp_user_id: phoneAuthData.temp_user_id,
+                                phone_number: phoneAuthData.phone,
+                                code: document.getElementById('confirmation-code').value,
+                                phone_code_hash: phoneAuthData.phone_code_hash,
+                                password: password
+                            })
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || `Ошибка при проверке пароля: ${response.status}`);
+                        }
+                        
+                        const data = await response.json();
+                        console.log('Результат авторизации с 2FA:', data);
+                        
+                        // Сохраняем токен и данные пользователя
+                        localStorage.setItem('access_token', data.access_token);
+                        localStorage.setItem('user_data', JSON.stringify(data.user));
+                        
+                        // Обновляем интерфейс
+                        updateAuthUI();
+                        
+                        // Загружаем диалоги
+                        loadDialogs();
+                    } catch (error) {
+                        console.error('Ошибка при проверке пароля:', error);
+                        alert(`Ошибка при проверке пароля: ${error.message}`);
+                    } finally {
+                        // Восстанавливаем кнопку
+                        verifyPasswordButton.disabled = false;
+                        verifyPasswordButton.textContent = 'Войти';
+                    }
+                });
+            }
+            
+            // Обработчики для кнопок "Назад"
+            if (backToPhoneButton) {
+                backToPhoneButton.addEventListener('click', function() {
+                    document.getElementById('code-step').style.display = 'none';
+                    document.getElementById('phone-step').style.display = 'block';
+                });
+            }
+            
+            if (backToCodeButton) {
+                backToCodeButton.addEventListener('click', function() {
+                    document.getElementById('password-step').style.display = 'none';
+                    document.getElementById('code-step').style.display = 'block';
+                });
+            }
+        }
+        
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', async function() {
             console.log('Страница загружена, начинаем инициализацию...');
@@ -403,6 +673,12 @@
             if (directAuthButton) {
                 directAuthButton.addEventListener('click', directAuth);
             }
+            
+            // Инициализируем вкладки авторизации
+            initAuthTabs();
+            
+            // Инициализируем авторизацию по телефону
+            initPhoneAuth();
             
             // Обновляем отладочную информацию
             updateAuthDebugInfo();

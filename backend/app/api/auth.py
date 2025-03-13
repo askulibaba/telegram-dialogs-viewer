@@ -41,6 +41,38 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     user: Dict[str, Any]
 
+class SendCodeRequest(BaseModel):
+    """Запрос на отправку кода подтверждения"""
+    phone_number: str
+
+class SendCodeResponse(BaseModel):
+    """Ответ на запрос отправки кода"""
+    temp_user_id: int
+    phone_code_hash: str
+    phone_number: str
+    message: Optional[str] = None
+
+class SignInRequest(BaseModel):
+    """Запрос на авторизацию по коду"""
+    temp_user_id: int
+    phone_number: str
+    code: str
+    phone_code_hash: str
+
+class SignIn2FARequest(BaseModel):
+    """Запрос на авторизацию по коду с двухфакторной аутентификацией"""
+    temp_user_id: int
+    phone_number: str
+    code: str
+    phone_code_hash: str
+    password: str
+
+class ManualAuthRequest(BaseModel):
+    """Запрос на ручную авторизацию (для тестирования)"""
+    id: str
+    first_name: Optional[str] = None
+    username: Optional[str] = None
+
 def verify_telegram_data(data: dict) -> bool:
     """
     Проверяет данные, полученные от Telegram Login Widget
@@ -185,5 +217,118 @@ async def code_auth(auth_data: CodeAuthRequest):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@router.post("/send-code", response_model=SendCodeResponse)
+async def send_code(request: SendCodeRequest):
+    """
+    Отправляет код подтверждения на указанный номер телефона
+    """
+    try:
+        # Отправляем запрос на получение кода
+        result = await send_code_request(request.phone_number)
+        
+        # Добавляем сообщение для пользователя
+        result["message"] = f"Код подтверждения отправлен на номер {request.phone_number}"
+        
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post("/sign-in", response_model=AuthResponse)
+async def sign_in_with_code(request: SignInRequest):
+    """
+    Авторизация по коду подтверждения
+    """
+    try:
+        # Авторизуемся по коду
+        user_data = await sign_in(
+            request.temp_user_id,
+            request.phone_number,
+            request.code,
+            request.phone_code_hash
+        )
+        
+        # Создаем токен
+        access_token = create_access_token({"user_id": str(user_data["id"])})
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": user_data
+        }
+    except ValueError as e:
+        if "Требуется пароль двухфакторной аутентификации" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Требуется пароль двухфакторной аутентификации"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post("/sign-in-2fa", response_model=AuthResponse)
+async def sign_in_with_2fa(request: SignIn2FARequest):
+    """
+    Авторизация по коду подтверждения с двухфакторной аутентификацией
+    """
+    try:
+        # Авторизуемся по коду и паролю
+        user_data = await sign_in(
+            request.temp_user_id,
+            request.phone_number,
+            request.code,
+            request.phone_code_hash,
+            request.password
+        )
+        
+        # Создаем токен
+        access_token = create_access_token({"user_id": str(user_data["id"])})
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": user_data
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post("/manual", response_model=AuthResponse)
+async def manual_auth(request: ManualAuthRequest):
+    """
+    Ручная авторизация для тестирования
+    """
+    try:
+        # Создаем токен
+        access_token = create_access_token({"user_id": request.id})
+        
+        # Формируем данные пользователя
+        user_data = {
+            "id": request.id,
+            "first_name": request.first_name or "Test User",
+            "username": request.username or "test_user"
+        }
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": user_data
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         ) 

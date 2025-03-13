@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     TELEGRAM_API_HASH: str
     
     # Настройки сессий
-    SESSIONS_DIR: str = "sessions"
+    SESSIONS_DIR: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sessions")
     
     class Config:
         case_sensitive = True

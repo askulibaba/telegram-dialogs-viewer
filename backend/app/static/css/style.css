@@ -233,13 +233,74 @@ footer .container {
     white-space: pre-wrap;
 }
 
+/* Стили для вкладок авторизации */
+.auth-tabs {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.auth-tab-button {
+    padding: 10px 15px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.3s ease;
+    border-bottom: 2px solid transparent;
+    margin-right: 10px;
+}
+
+.auth-tab-button:hover {
+    color: #2196F3;
+}
+
+.auth-tab-button.active {
+    color: #2196F3;
+    border-bottom-color: #2196F3;
+}
+
+.auth-tab-pane {
+    display: none;
+}
+
+.auth-tab-pane.active {
+    display: block;
+}
+
+/* Стили для авторизации по телефону */
+.phone-auth {
+    padding: 20px 0;
+}
+
+.auth-step {
+    margin-bottom: 20px;
+}
+
+.auth-input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.auth-button.secondary {
+    background-color: #f5f5f5;
+    color: #333;
+    border: 1px solid #ddd;
+}
+
+.auth-button.secondary:hover {
+    background-color: #e0e0e0;
+}
+
 /* Стили для ручной авторизации */
 .manual-auth {
-    margin-top: 20px;
-    padding: 15px;
-    background-color: #f8f9fa;
-    border-radius: 4px;
-    border: 1px solid #dee2e6;
+    padding: 20px 0;
 }
 
 .manual-auth p {
