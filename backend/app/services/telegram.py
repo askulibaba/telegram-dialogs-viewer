@@ -65,10 +65,44 @@ async def get_client(user_id: int) -> TelegramClient:
         try:
             session_files = os.listdir(settings.SESSIONS_DIR)
             logger.info(f"Файлы в директории сессий: {session_files}")
+            
+            # Проверяем, есть ли файлы сессий для других пользователей
+            for file in session_files:
+                if file.startswith("user_") and file.endswith(".session"):
+                    other_user_id = file.replace("user_", "").replace(".session", "")
+                    logger.info(f"Найден файл сессии для пользователя {other_user_id}")
+            
+            # Проверяем, есть ли временные файлы сессий
+            for file in session_files:
+                if file.startswith("temp_user_") and file.endswith(".session"):
+                    temp_user_id = file.replace("temp_user_", "").replace(".session", "")
+                    logger.info(f"Найден временный файл сессии: {temp_user_id}")
+                    
+                    # Пробуем использовать временный файл сессии
+                    logger.info(f"Пробуем использовать временный файл сессии {temp_user_id} для пользователя {user_id}")
+                    try:
+                        import shutil
+                        shutil.copy(os.path.join(settings.SESSIONS_DIR, file), f"{session_file}.session")
+                        logger.info(f"Временный файл сессии скопирован в {session_file}.session")
+                    except Exception as e:
+                        logger.error(f"Ошибка при копировании временного файла сессии: {str(e)}")
         except Exception as e:
             logger.error(f"Ошибка при чтении директории сессий: {str(e)}")
         
-        raise ValueError(f"Сессия для пользователя {user_id} не найдена")
+        # Если файл сессии все еще не существует, выбрасываем исключение
+        if not os.path.exists(f"{session_file}.session"):
+            raise ValueError(f"Сессия для пользователя {user_id} не найдена")
+    else:
+        # Проверяем размер файла сессии
+        try:
+            file_size = os.path.getsize(f"{session_file}.session")
+            logger.info(f"Размер файла сессии: {file_size} байт")
+            
+            if file_size == 0:
+                logger.error(f"Файл сессии пуст: {session_file}.session")
+                raise ValueError(f"Файл сессии пуст: {session_file}.session")
+        except Exception as e:
+            logger.error(f"Ошибка при проверке размера файла сессии: {str(e)}")
     
     # Создаем клиент
     logger.info(f"Создаем клиент для пользователя {user_id}")
@@ -85,9 +119,19 @@ async def get_client(user_id: int) -> TelegramClient:
         
         # Проверяем, авторизован ли клиент
         logger.info(f"Проверяем авторизацию клиента")
-        if not await client.is_user_authorized():
+        is_authorized = await client.is_user_authorized()
+        logger.info(f"Клиент авторизован: {is_authorized}")
+        
+        if not is_authorized:
             logger.error(f"Пользователь {user_id} не авторизован")
             raise ValueError("Пользователь не авторизован")
+        
+        # Получаем информацию о пользователе
+        try:
+            me = await client.get_me()
+            logger.info(f"Информация о пользователе: id={me.id}, username={me.username}, phone={me.phone}")
+        except Exception as e:
+            logger.error(f"Ошибка при получении информации о пользователе: {str(e)}")
         
         # Сохраняем клиент
         logger.info(f"Сохраняем клиент в кэш")
@@ -214,6 +258,13 @@ async def sign_in(
             "phone": phone_number
         }
         
+        # Явно сохраняем сессию
+        try:
+            await client.session.save()
+            logger.info(f"Сессия сохранена явно")
+        except Exception as e:
+            logger.error(f"Ошибка при явном сохранении сессии: {str(e)}")
+        
         # Перемещаем сессию из временной в постоянную
         temp_session_file = os.path.join(settings.SESSIONS_DIR, f"temp_user_{temp_user_id}")
         permanent_session_file = os.path.join(settings.SESSIONS_DIR, f"user_{me.id}")
@@ -221,20 +272,26 @@ async def sign_in(
         
         if os.path.exists(f"{temp_session_file}.session"):
             try:
-                # Сначала пробуем скопировать файл
+                # Копируем файл сессии
                 import shutil
                 try:
                     shutil.copy(f"{temp_session_file}.session", f"{permanent_session_file}.session")
                     logger.info(f"Сессия успешно скопирована")
+                    
+                    # Проверяем, что файл был скопирован
+                    if os.path.exists(f"{permanent_session_file}.session"):
+                        logger.info(f"Файл сессии успешно создан: {permanent_session_file}.session")
+                        
+                        # Удаляем временный файл сессии
+                        try:
+                            os.remove(f"{temp_session_file}.session")
+                            logger.info(f"Временный файл сессии удален")
+                        except Exception as e:
+                            logger.error(f"Ошибка при удалении временного файла сессии: {str(e)}")
+                    else:
+                        logger.error(f"Файл сессии не был создан: {permanent_session_file}.session")
                 except Exception as copy_error:
                     logger.error(f"Ошибка при копировании сессии: {str(copy_error)}")
-                    
-                # Затем пробуем переименовать файл
-                try:
-                    os.rename(f"{temp_session_file}.session", f"{permanent_session_file}.session")
-                    logger.info(f"Сессия успешно перемещена")
-                except Exception as e:
-                    logger.error(f"Ошибка при перемещении сессии: {str(e)}")
             except Exception as e:
                 logger.error(f"Ошибка при работе с файлами сессий: {str(e)}")
         else:
@@ -247,23 +304,40 @@ async def sign_in(
             except Exception as e:
                 logger.error(f"Ошибка при чтении директории сессий: {str(e)}")
         
-        # Проверяем, создался ли файл сессии
-        if os.path.exists(f"{permanent_session_file}.session"):
-            logger.info(f"Файл сессии успешно создан: {permanent_session_file}.session")
-        else:
-            logger.warning(f"Файл сессии не создан: {permanent_session_file}.session")
+        # Создаем новый клиент с постоянным файлом сессии
+        try:
+            new_client = TelegramClient(
+                permanent_session_file,
+                settings.TELEGRAM_API_ID,
+                settings.TELEGRAM_API_HASH
+            )
             
-            # Пробуем сохранить сессию явно
-            try:
-                await client.session.save()
-                logger.info(f"Сессия сохранена явно")
-            except Exception as e:
-                logger.error(f"Ошибка при явном сохранении сессии: {str(e)}")
+            # Подключаемся к Telegram
+            await new_client.connect()
+            
+            # Проверяем, авторизован ли клиент
+            is_authorized = await new_client.is_user_authorized()
+            logger.info(f"Новый клиент авторизован: {is_authorized}")
+            
+            if is_authorized:
+                # Обновляем словарь клиентов
+                clients[me.id] = new_client
+                logger.info(f"Новый клиент сохранен в кэш")
+            else:
+                logger.error(f"Новый клиент не авторизован")
+                # Используем старый клиент
+                clients[me.id] = client
+                logger.info(f"Используем старый клиент")
+        except Exception as e:
+            logger.error(f"Ошибка при создании нового клиента: {str(e)}")
+            # Используем старый клиент
+            clients[me.id] = client
+            logger.info(f"Используем старый клиент из-за ошибки")
         
-        # Обновляем словарь клиентов
-        clients[me.id] = client
+        # Удаляем временный клиент из кэша
         if temp_user_id in clients:
             del clients[temp_user_id]
+            logger.info(f"Временный клиент удален из кэша")
         
         return result
     except PhoneCodeInvalidError:
@@ -346,9 +420,8 @@ async def get_dialogs(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
         return result
     except Exception as e:
         logger.error(f"Ошибка при получении диалогов: {str(e)}")
-        # В случае ошибки возвращаем тестовые данные
-        logger.info(f"Возвращаем тестовые диалоги из-за ошибки: {str(e)}")
-        return await get_test_dialogs(user_id)
+        # Вместо возврата тестовых данных, выбрасываем исключение
+        raise ValueError(f"Ошибка при получении диалогов: {str(e)}")
 
 
 async def get_test_dialogs(user_id: str) -> List[Dict[str, Any]]:
