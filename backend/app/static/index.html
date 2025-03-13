@@ -25,7 +25,7 @@
                 <p>Для просмотра диалогов необходимо авторизоваться через Telegram.</p>
                 <div class="auth-methods">
                     <div id="telegram-login">
-                        <!-- Виджет авторизации Telegram -->
+                        <!-- Виджет авторизации Telegram будет добавлен динамически -->
                     </div>
                     <p>или</p>
                     <a href="tg://resolve?domain=EnigmaSecretMessages_bot" class="auth-button telegram-button">
@@ -52,6 +52,17 @@
             <h2>Отладочная информация</h2>
             <div id="debug-info" class="debug-info">
                 <p>Загрузка информации о боте...</p>
+            </div>
+            <div class="webhook-controls">
+                <h3>Управление вебхуком</h3>
+                <button id="set-webhook-button" class="auth-button">Установить вебхук</button>
+                <button id="delete-webhook-button" class="auth-button">Удалить вебхук</button>
+                <button id="refresh-info-button" class="auth-button">Обновить информацию</button>
+            </div>
+            <div class="test-message-controls">
+                <h3>Отправка тестового сообщения</h3>
+                <input type="text" id="test-chat-id" placeholder="ID чата для тестового сообщения">
+                <button id="send-test-message-button" class="auth-button">Отправить тестовое сообщение</button>
             </div>
         </section>
     </main>
@@ -87,18 +98,28 @@
                     const telegramLogin = document.getElementById('telegram-login');
                     
                     if (telegramLogin) {
+                        // Очищаем содержимое контейнера
+                        telegramLogin.innerHTML = '';
+                        
+                        // Создаем скрипт для виджета
                         const script = document.createElement('script');
                         script.async = true;
                         script.src = 'https://telegram.org/js/telegram-widget.js?22';
                         script.setAttribute('data-telegram-login', botUsername);
                         script.setAttribute('data-size', 'large');
-                        script.setAttribute('data-auth-url', '/api/v1/auth/telegram');
+                        script.setAttribute('data-auth-url', `${window.location.origin}/api/v1/auth/telegram`);
                         script.setAttribute('data-request-access', 'write');
-                        script.setAttribute('data-onauth', 'telegramLogin(user)');
                         
+                        // Добавляем скрипт в контейнер
                         telegramLogin.appendChild(script);
+                        
+                        console.log('Виджет авторизации Telegram добавлен:', botUsername);
                     }
+                } else {
+                    console.error('Бот не авторизован или информация о боте недоступна');
                 }
+                
+                return data;
             } catch (error) {
                 console.error('Ошибка при загрузке информации о боте:', error);
                 const debugInfo = document.getElementById('debug-info');
@@ -108,12 +129,206 @@
                         <pre>${error.message}</pre>
                     `;
                 }
+                return null;
             }
         }
         
-        // Загружаем информацию о боте при загрузке страницы
-        document.addEventListener('DOMContentLoaded', function() {
-            loadBotInfo();
+        // Функция для установки вебхука
+        async function setWebhook() {
+            try {
+                const response = await fetch('/set-webhook', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                console.log('Результат установки вебхука:', data);
+                
+                // Обновляем информацию о боте
+                await loadBotInfo();
+                
+                return data;
+            } catch (error) {
+                console.error('Ошибка при установке вебхука:', error);
+                return null;
+            }
+        }
+        
+        // Функция для удаления вебхука
+        async function deleteWebhook() {
+            try {
+                const response = await fetch('/delete-webhook', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                console.log('Результат удаления вебхука:', data);
+                
+                // Обновляем информацию о боте
+                await loadBotInfo();
+                
+                return data;
+            } catch (error) {
+                console.error('Ошибка при удалении вебхука:', error);
+                return null;
+            }
+        }
+        
+        // Функция для отправки тестового сообщения
+        async function sendTestMessage(chatId) {
+            try {
+                const response = await fetch('/send-test-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        chat_id: chatId
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('Результат отправки тестового сообщения:', data);
+                
+                return data;
+            } catch (error) {
+                console.error('Ошибка при отправке тестового сообщения:', error);
+                return null;
+            }
+        }
+        
+        // Функция для ручной авторизации
+        async function manualAuth(userId) {
+            try {
+                const response = await fetch('/api/v1/auth/manual', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id: userId,
+                        first_name: 'Тестовый пользователь',
+                        username: 'test_user'
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('Результат ручной авторизации:', data);
+                
+                if (data.access_token) {
+                    // Сохраняем токен в localStorage
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    
+                    // Обновляем интерфейс
+                    updateUI(true);
+                    
+                    // Загружаем диалоги
+                    loadDialogs();
+                }
+                
+                return data;
+            } catch (error) {
+                console.error('Ошибка при ручной авторизации:', error);
+                return null;
+            }
+        }
+        
+        // Функция для обновления интерфейса
+        function updateUI(isAuthenticated) {
+            const authSection = document.getElementById('auth-section');
+            const dialogsSection = document.getElementById('dialogs-section');
+            const userInfo = document.getElementById('user-info');
+            
+            if (isAuthenticated) {
+                authSection.style.display = 'none';
+                dialogsSection.style.display = 'block';
+                userInfo.style.display = 'block';
+            } else {
+                authSection.style.display = 'block';
+                dialogsSection.style.display = 'none';
+                userInfo.style.display = 'none';
+            }
+        }
+        
+        // Функция для загрузки диалогов
+        async function loadDialogs() {
+            const loading = document.getElementById('loading');
+            const dialogsList = document.getElementById('dialogs-list');
+            const errorMessage = document.getElementById('error-message');
+            
+            loading.style.display = 'block';
+            dialogsList.innerHTML = '';
+            errorMessage.style.display = 'none';
+            
+            try {
+                const token = localStorage.getItem('access_token');
+                
+                if (!token) {
+                    throw new Error('Не найден токен авторизации');
+                }
+                
+                const response = await fetch('/api/v1/dialogs', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Ошибка при загрузке диалогов: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    dialogsList.innerHTML = '<p>У вас нет диалогов</p>';
+                } else {
+                    // Отображаем диалоги
+                    data.forEach(dialog => {
+                        const dialogElement = document.createElement('div');
+                        dialogElement.className = 'dialog-card';
+                        dialogElement.innerHTML = `
+                            <div class="dialog-header">
+                                <div class="dialog-avatar"></div>
+                                <div class="dialog-name">${dialog.title || 'Без названия'}</div>
+                                ${dialog.unread_count ? `<div class="unread-badge">${dialog.unread_count}</div>` : ''}
+                            </div>
+                            <div class="dialog-last-message">${dialog.last_message || 'Нет сообщений'}</div>
+                            <div class="dialog-time">${dialog.last_message_date || ''}</div>
+                        `;
+                        dialogsList.appendChild(dialogElement);
+                    });
+                }
+            } catch (error) {
+                console.error('Ошибка при загрузке диалогов:', error);
+                errorMessage.textContent = error.message;
+                errorMessage.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+        
+        // Функция для выхода из аккаунта
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user');
+            updateUI(false);
+        }
+        
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Загружаем информацию о боте
+            await loadBotInfo();
+            
+            // Проверяем авторизацию
+            const token = localStorage.getItem('access_token');
+            if (token) {
+                updateUI(true);
+                loadDialogs();
+            }
             
             // Обработчик для ручной авторизации
             const manualAuthButton = document.getElementById('manual-auth-button');
@@ -121,23 +336,87 @@
                 manualAuthButton.addEventListener('click', function() {
                     const telegramId = document.getElementById('telegram-id').value;
                     if (telegramId) {
-                        // Создаем тестовый объект пользователя
-                        const user = {
-                            id: telegramId,
-                            first_name: 'Test User',
-                            username: 'test_user',
-                            auth_date: Math.floor(Date.now() / 1000),
-                            hash: 'test_hash' // В реальности этот хеш должен быть валидным
-                        };
-                        
-                        // Вызываем функцию авторизации
-                        window.telegramLogin(user);
+                        manualAuth(telegramId);
                     } else {
                         alert('Пожалуйста, введите Telegram ID');
                     }
                 });
             }
+            
+            // Обработчик для выхода
+            const logoutButton = document.getElementById('logout-button');
+            if (logoutButton) {
+                logoutButton.addEventListener('click', logout);
+            }
+            
+            // Обработчик для установки вебхука
+            const setWebhookButton = document.getElementById('set-webhook-button');
+            if (setWebhookButton) {
+                setWebhookButton.addEventListener('click', setWebhook);
+            }
+            
+            // Обработчик для удаления вебхука
+            const deleteWebhookButton = document.getElementById('delete-webhook-button');
+            if (deleteWebhookButton) {
+                deleteWebhookButton.addEventListener('click', deleteWebhook);
+            }
+            
+            // Обработчик для обновления информации
+            const refreshInfoButton = document.getElementById('refresh-info-button');
+            if (refreshInfoButton) {
+                refreshInfoButton.addEventListener('click', loadBotInfo);
+            }
+            
+            // Обработчик для отправки тестового сообщения
+            const sendTestMessageButton = document.getElementById('send-test-message-button');
+            if (sendTestMessageButton) {
+                sendTestMessageButton.addEventListener('click', function() {
+                    const chatId = document.getElementById('test-chat-id').value;
+                    if (chatId) {
+                        sendTestMessage(chatId);
+                    } else {
+                        alert('Пожалуйста, введите ID чата');
+                    }
+                });
+            }
         });
+        
+        // Глобальная функция для обработки авторизации через Telegram
+        window.telegramLogin = function(user) {
+            console.log('Получены данные пользователя от Telegram:', user);
+            
+            // Отправляем данные на сервер для проверки
+            fetch('/api/v1/auth/telegram', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(user)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Ответ сервера:', data);
+                
+                if (data.access_token) {
+                    // Сохраняем токен в localStorage
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    
+                    // Обновляем интерфейс
+                    updateUI(true);
+                    
+                    // Загружаем диалоги
+                    loadDialogs();
+                } else {
+                    console.error('Ошибка авторизации:', data.error || 'Неизвестная ошибка');
+                    alert('Ошибка авторизации: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка при отправке данных на сервер:', error);
+                alert('Ошибка при отправке данных на сервер: ' + error.message);
+            });
+        };
     </script>
 
     <script src="/static/js/app.js"></script>

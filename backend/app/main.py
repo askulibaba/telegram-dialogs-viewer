@@ -170,7 +170,8 @@ async def set_telegram_webhook(webhook_url):
     
     data = {
         "url": webhook_url,
-        "drop_pending_updates": True
+        "drop_pending_updates": True,
+        "allowed_updates": ["message", "callback_query"]
     }
     
     try:
@@ -212,6 +213,20 @@ async def on_startup():
     """
     logger.info("Запуск приложения...")
     
+    # Проверяем токен бота
+    try:
+        me_url = f"{TELEGRAM_API_URL}/getMe"
+        response = await http_client.get(me_url)
+        response.raise_for_status()
+        me_data = response.json()
+        if me_data.get("ok"):
+            bot_info = me_data.get("result", {})
+            logger.info(f"Бот успешно авторизован: @{bot_info.get('username')} ({bot_info.get('first_name')})")
+        else:
+            logger.error(f"Ошибка при получении информации о боте: {me_data}")
+    except Exception as e:
+        logger.error(f"Ошибка при проверке токена бота: {e}", exc_info=True)
+    
     # Удаляем все предыдущие вебхуки
     await delete_telegram_webhook()
     
@@ -226,20 +241,6 @@ async def on_startup():
         logger.info("Вебхук успешно установлен")
     else:
         logger.error(f"Не удалось установить вебхук: {result}")
-    
-    # Проверяем токен бота
-    try:
-        me_url = f"{TELEGRAM_API_URL}/getMe"
-        response = await http_client.get(me_url)
-        response.raise_for_status()
-        me_data = response.json()
-        if me_data.get("ok"):
-            bot_info = me_data.get("result", {})
-            logger.info(f"Бот успешно авторизован: @{bot_info.get('username')} ({bot_info.get('first_name')})")
-        else:
-            logger.error(f"Ошибка при получении информации о боте: {me_data}")
-    except Exception as e:
-        logger.error(f"Ошибка при проверке токена бота: {e}", exc_info=True)
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -324,4 +325,64 @@ async def send_test_message(request: Request):
         return JSONResponse({"result": result})
     except Exception as e:
         logger.error(f"Ошибка при отправке тестового сообщения: {e}", exc_info=True)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/set-webhook")
+async def set_webhook(request: Request):
+    """
+    Ручная установка вебхука
+    """
+    try:
+        data = await request.json()
+        webhook_url = data.get("webhook_url")
+        
+        if not webhook_url:
+            webhook_url = f"{settings.APP_URL}/webhook"
+        
+        result = await set_telegram_webhook(webhook_url)
+        
+        return JSONResponse({"result": result})
+    except Exception as e:
+        logger.error(f"Ошибка при установке вебхука: {e}", exc_info=True)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/delete-webhook")
+async def delete_webhook():
+    """
+    Ручное удаление вебхука
+    """
+    try:
+        result = await delete_telegram_webhook()
+        
+        return JSONResponse({"result": result})
+    except Exception as e:
+        logger.error(f"Ошибка при удалении вебхука: {e}", exc_info=True)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/v1/auth/manual")
+async def manual_auth(request: Request):
+    """
+    Ручная авторизация для тестирования
+    """
+    try:
+        data = await request.json()
+        user_id = data.get("id")
+        
+        if not user_id:
+            return JSONResponse({"error": "id is required"}, status_code=400)
+        
+        # Создаем тестовый токен
+        access_token = f"test_token_{user_id}"
+        
+        return JSONResponse({
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user_id,
+                "first_name": data.get("first_name", "Test User"),
+                "username": data.get("username", "test_user")
+            }
+        })
+    except Exception as e:
+        logger.error(f"Ошибка при ручной авторизации: {e}", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500) 
