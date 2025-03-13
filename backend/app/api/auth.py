@@ -6,12 +6,15 @@ import hashlib
 import hmac
 import json
 import time
+import logging
 
 from app.core.security import create_access_token, verify_telegram_auth
 from app.services.telegram import send_code_request, sign_in
 from app.core.config import settings
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 class TelegramAuthRequest(BaseModel):
     """Запрос на авторизацию через Telegram Login Widget"""
@@ -254,7 +257,11 @@ async def sign_in_with_code(request: SignInRequest):
         )
         
         # Создаем токен
-        access_token = create_access_token({"user_id": str(user_data["id"])})
+        user_id_str = str(user_data["id"])
+        logger.info(f"Создаем токен для пользователя с ID: {user_id_str}")
+        access_token = create_access_token({"user_id": user_id_str})
+        
+        logger.info(f"Токен успешно создан: {access_token[:10]}...")
         
         return {
             "access_token": access_token,
@@ -293,7 +300,11 @@ async def sign_in_with_2fa(request: SignIn2FARequest):
         )
         
         # Создаем токен
-        access_token = create_access_token({"user_id": str(user_data["id"])})
+        user_id_str = str(user_data["id"])
+        logger.info(f"Создаем токен для пользователя с ID: {user_id_str}")
+        access_token = create_access_token({"user_id": user_id_str})
+        
+        logger.info(f"Токен успешно создан: {access_token[:10]}...")
         
         return {
             "access_token": access_token,
@@ -313,7 +324,11 @@ async def manual_auth(request: ManualAuthRequest):
     """
     try:
         # Создаем токен
-        access_token = create_access_token({"user_id": request.id})
+        user_id_str = str(request.id)
+        logger.info(f"Создаем токен для тестового пользователя с ID: {user_id_str}")
+        access_token = create_access_token({"user_id": user_id_str})
+        
+        logger.info(f"Токен успешно создан: {access_token[:10]}...")
         
         # Формируем данные пользователя
         user_data = {

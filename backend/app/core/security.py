@@ -64,14 +64,20 @@ def verify_token(token: str) -> Optional[TokenData]:
     """
     try:
         # Декодируем токен
+        logger.info(f"Декодируем токен: {token[:10]}...")
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        logger.info(f"Токен декодирован: {payload}")
         
         # Получаем ID пользователя (проверяем оба возможных ключа)
         user_id = payload.get("user_id")
         if user_id is None:
             user_id = payload.get("sub")  # Альтернативный ключ
+            logger.info(f"ID пользователя получен из ключа 'sub': {user_id}")
+        else:
+            logger.info(f"ID пользователя получен из ключа 'user_id': {user_id}")
         
         if user_id is None:
+            logger.error("ID пользователя не найден в токене")
             return None
         
         # Получаем время истечения токена
@@ -80,7 +86,9 @@ def verify_token(token: str) -> Optional[TokenData]:
             exp_datetime = datetime.fromtimestamp(exp)
             # Проверяем, не истек ли токен
             if exp_datetime < datetime.utcnow():
+                logger.error(f"Токен истек: {exp_datetime}")
                 return None
+            logger.info(f"Токен действителен до: {exp_datetime}")
         
         # Возвращаем данные токена
         return TokenData(user_id=user_id, exp=exp_datetime if exp else None)
@@ -90,6 +98,7 @@ def verify_token(token: str) -> Optional[TokenData]:
         # Для обратной совместимости с тестовыми токенами
         if token.startswith("jwt_token_") or token.startswith("telegram_token_") or token.startswith("test_token_"):
             user_id = token.split("_")[-1]
+            logger.info(f"Используем тестовый токен с ID: {user_id}")
             return TokenData(user_id=user_id)
         
         return None

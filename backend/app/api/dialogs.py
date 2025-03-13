@@ -34,18 +34,25 @@ def get_current_user(authorization: Optional[str] = Header(None)):
     Получает текущего пользователя из токена авторизации
     """
     if not authorization:
+        logger.error("Не указан токен авторизации")
         raise HTTPException(status_code=401, detail="Не указан токен авторизации")
     
     try:
         # Проверяем формат токена
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":
+            logger.error(f"Неверный формат токена: {scheme}")
             raise HTTPException(status_code=401, detail="Неверный формат токена")
+        
+        logger.info(f"Проверяем токен: {token[:10]}...")
         
         # Проверяем токен
         token_data = verify_token(token)
         if not token_data:
+            logger.error("Токен не прошел проверку")
             raise HTTPException(status_code=401, detail="Неверный токен авторизации")
+        
+        logger.info(f"Токен прошел проверку, user_id: {token_data.user_id}")
         
         return {"id": token_data.user_id}
     except Exception as e:

@@ -60,6 +60,14 @@ async def get_client(user_id: int) -> TelegramClient:
     # Проверяем существование файла сессии
     if not os.path.exists(f"{session_file}.session"):
         logger.error(f"Файл сессии не найден: {session_file}.session")
+        
+        # Проверяем содержимое директории сессий
+        try:
+            session_files = os.listdir(settings.SESSIONS_DIR)
+            logger.info(f"Файлы в директории сессий: {session_files}")
+        except Exception as e:
+            logger.error(f"Ошибка при чтении директории сессий: {str(e)}")
+        
         raise ValueError(f"Сессия для пользователя {user_id} не найдена")
     
     # Создаем клиент
@@ -175,18 +183,23 @@ async def sign_in(
         
         try:
             # Пытаемся авторизоваться по коду
+            logger.info(f"Авторизация по коду для номера {phone_number}")
             user = await client.sign_in(
                 phone=phone_number,
                 code=code,
                 phone_code_hash=phone_code_hash
             )
+            logger.info(f"Успешная авторизация по коду для номера {phone_number}")
         except SessionPasswordNeededError:
             # Если требуется пароль двухфакторной аутентификации
             if not password:
+                logger.info(f"Требуется пароль двухфакторной аутентификации для номера {phone_number}")
                 raise ValueError("Требуется пароль двухфакторной аутентификации")
             
             # Авторизуемся с паролем
+            logger.info(f"Авторизация с паролем для номера {phone_number}")
             user = await client.sign_in(password=password)
+            logger.info(f"Успешная авторизация с паролем для номера {phone_number}")
         
         # Получаем информацию о пользователе
         me = await client.get_me()
@@ -208,19 +221,44 @@ async def sign_in(
         
         if os.path.exists(f"{temp_session_file}.session"):
             try:
-                os.rename(f"{temp_session_file}.session", f"{permanent_session_file}.session")
-                logger.info(f"Сессия успешно перемещена")
-            except Exception as e:
-                logger.error(f"Ошибка при перемещении сессии: {str(e)}")
-                # Если не удалось переместить, копируем
+                # Сначала пробуем скопировать файл
                 import shutil
                 try:
                     shutil.copy(f"{temp_session_file}.session", f"{permanent_session_file}.session")
                     logger.info(f"Сессия успешно скопирована")
                 except Exception as copy_error:
                     logger.error(f"Ошибка при копировании сессии: {str(copy_error)}")
+                    
+                # Затем пробуем переименовать файл
+                try:
+                    os.rename(f"{temp_session_file}.session", f"{permanent_session_file}.session")
+                    logger.info(f"Сессия успешно перемещена")
+                except Exception as e:
+                    logger.error(f"Ошибка при перемещении сессии: {str(e)}")
+            except Exception as e:
+                logger.error(f"Ошибка при работе с файлами сессий: {str(e)}")
         else:
             logger.warning(f"Файл сессии не найден: {temp_session_file}.session")
+            
+            # Проверяем содержимое директории сессий
+            try:
+                session_files = os.listdir(settings.SESSIONS_DIR)
+                logger.info(f"Файлы в директории сессий: {session_files}")
+            except Exception as e:
+                logger.error(f"Ошибка при чтении директории сессий: {str(e)}")
+        
+        # Проверяем, создался ли файл сессии
+        if os.path.exists(f"{permanent_session_file}.session"):
+            logger.info(f"Файл сессии успешно создан: {permanent_session_file}.session")
+        else:
+            logger.warning(f"Файл сессии не создан: {permanent_session_file}.session")
+            
+            # Пробуем сохранить сессию явно
+            try:
+                await client.session.save()
+                logger.info(f"Сессия сохранена явно")
+            except Exception as e:
+                logger.error(f"Ошибка при явном сохранении сессии: {str(e)}")
         
         # Обновляем словарь клиентов
         clients[me.id] = client
