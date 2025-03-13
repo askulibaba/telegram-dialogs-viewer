@@ -4,6 +4,8 @@ import asyncio
 from typing import Dict, List, Any, Optional
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
+from datetime import datetime, timedelta
+import random
 
 from app.core.config import settings
 
@@ -100,74 +102,110 @@ async def sign_in(
     }
 
 
-async def get_dialogs(user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+async def get_dialogs(user_id: str) -> List[Dict[str, Any]]:
     """
     Получает список диалогов пользователя
     
     Args:
         user_id: ID пользователя
-        limit: Максимальное количество диалогов
     
     Returns:
         List[Dict[str, Any]]: Список диалогов
     """
     logger.info(f"Получение диалогов для пользователя {user_id}")
     
-    # Заглушка для тестирования
-    return []
+    # В реальном приложении здесь должен быть запрос к API Telegram
+    # В данном случае возвращаем тестовые данные
+    now = datetime.now()
+    
+    dialogs = [
+        {
+            "id": "1",
+            "title": "Тестовый диалог 1",
+            "last_message": "Привет! Как дела?",
+            "last_message_date": now.isoformat(),
+            "unread_count": 2
+        },
+        {
+            "id": "2",
+            "title": "Тестовый диалог 2",
+            "last_message": "Посмотри это видео!",
+            "last_message_date": (now - timedelta(days=1)).isoformat(),
+            "unread_count": 0
+        },
+        {
+            "id": "3",
+            "title": "Тестовый диалог 3",
+            "last_message": "Спасибо за информацию",
+            "last_message_date": (now - timedelta(days=2)).isoformat(),
+            "unread_count": 0
+        }
+    ]
+    
+    # Добавляем случайные диалоги
+    for i in range(random.randint(1, 3)):
+        dialogs.append({
+            "id": str(100 + i),
+            "title": f"Случайный диалог {i+1}",
+            "last_message": f"Сообщение {random.randint(1, 100)}",
+            "last_message_date": (now - timedelta(hours=random.randint(1, 24))).isoformat(),
+            "unread_count": random.randint(0, 10)
+        })
+    
+    return dialogs
 
 
-async def get_messages(
-    user_id: str,
-    dialog_id: int,
-    limit: int = 20,
-    offset_id: int = 0
-) -> List[Dict[str, Any]]:
+async def get_messages(dialog_id: str, user_id: str) -> List[Dict[str, Any]]:
     """
     Получает сообщения из диалога
     
     Args:
-        user_id: ID пользователя
         dialog_id: ID диалога
-        limit: Максимальное количество сообщений
-        offset_id: ID сообщения, с которого начинать
+        user_id: ID пользователя
     
     Returns:
         List[Dict[str, Any]]: Список сообщений
     """
-    logger.info(f"Получение сообщений для пользователя {user_id} из диалога {dialog_id}")
+    logger.info(f"Получение сообщений из диалога {dialog_id} для пользователя {user_id}")
     
-    # Заглушка для тестирования
-    return []
+    # В реальном приложении здесь должен быть запрос к API Telegram
+    # В данном случае возвращаем тестовые данные
+    now = datetime.now()
+    
+    messages = []
+    for i in range(10):
+        is_outgoing = random.choice([True, False])
+        messages.append({
+            "id": str(i + 1),
+            "text": f"Тестовое сообщение {i + 1}",
+            "date": (now - timedelta(minutes=i * 5)).isoformat(),
+            "is_outgoing": is_outgoing,
+            "sender": "Вы" if is_outgoing else f"Собеседник {dialog_id}"
+        })
+    
+    return messages
 
 
-async def send_message(
-    user_id: str,
-    dialog_id: int,
-    text: str,
-    reply_to: Optional[int] = None
-) -> Dict[str, Any]:
+async def send_message(dialog_id: str, text: str, user_id: str) -> Dict[str, Any]:
     """
     Отправляет сообщение в диалог
     
     Args:
-        user_id: ID пользователя
         dialog_id: ID диалога
         text: Текст сообщения
-        reply_to: ID сообщения, на которое отвечаем (опционально)
+        user_id: ID пользователя
     
     Returns:
         Dict[str, Any]: Результат отправки
     """
-    logger.info(f"Отправка сообщения для пользователя {user_id} в диалог {dialog_id}")
+    logger.info(f"Отправка сообщения в диалог {dialog_id} от пользователя {user_id}: {text}")
     
-    # Заглушка для тестирования
+    # В реальном приложении здесь должен быть запрос к API Telegram
+    # В данном случае возвращаем тестовый результат
     return {
-        "id": 123456789,
-        "text": text,
-        "date": "now",
-        "dialog_id": dialog_id,
-        "reply_to": reply_to
+        "success": True,
+        "message_id": str(random.randint(1000, 9999)),
+        "date": datetime.now().isoformat()
     }
 
 

@@ -6,6 +6,7 @@
     <title>Telegram Dialogs Viewer</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📱</text></svg>">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -483,8 +484,72 @@
             // Обновляем интерфейс
             updateUI(true);
             
-            // Загружаем диалоги
-            loadDialogs();
+            try {
+                // Загружаем диалоги с использованием полного URL
+                const apiUrl = `${window.location.origin}/api/v1/dialogs`;
+                console.log('Загрузка диалогов с URL после прямой авторизации:', apiUrl);
+                
+                fetch(apiUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                })
+                .then(response => {
+                    console.log('Ответ от сервера при загрузке диалогов:', response);
+                    if (!response.ok) {
+                        throw new Error(`Ошибка при загрузке диалогов: ${response.status} ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Полученные диалоги:', data);
+                    // Отображаем диалоги
+                    const dialogsList = document.getElementById('dialogs-list');
+                    if (dialogsList) {
+                        dialogsList.innerHTML = '';
+                        if (data.length === 0) {
+                            dialogsList.innerHTML = '<p>У вас нет диалогов</p>';
+                        } else {
+                            data.forEach(dialog => {
+                                const dialogElement = document.createElement('div');
+                                dialogElement.className = 'dialog-card';
+                                dialogElement.innerHTML = `
+                                    <div class="dialog-header">
+                                        <div class="dialog-avatar"></div>
+                                        <div class="dialog-name">${dialog.title || 'Без названия'}</div>
+                                        ${dialog.unread_count ? `<div class="unread-badge">${dialog.unread_count}</div>` : ''}
+                                    </div>
+                                    <div class="dialog-last-message">${dialog.last_message || 'Нет сообщений'}</div>
+                                    <div class="dialog-time">${dialog.last_message_date || ''}</div>
+                                `;
+                                dialogsList.appendChild(dialogElement);
+                            });
+                        }
+                    }
+                    
+                    // Скрываем индикатор загрузки
+                    const loading = document.getElementById('loading');
+                    if (loading) {
+                        loading.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка при загрузке диалогов после прямой авторизации:', error);
+                    const errorMessage = document.getElementById('error-message');
+                    if (errorMessage) {
+                        errorMessage.textContent = error.message;
+                        errorMessage.style.display = 'block';
+                    }
+                    
+                    // Скрываем индикатор загрузки
+                    const loading = document.getElementById('loading');
+                    if (loading) {
+                        loading.style.display = 'none';
+                    }
+                });
+            } catch (error) {
+                console.error('Критическая ошибка при загрузке диалогов:', error);
+            }
             
             // Обновляем отладочную информацию
             updateAuthDebugInfo();

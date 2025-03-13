@@ -1,3 +1,8 @@
+"""
+API для работы с диалогами Telegram
+"""
+
+import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from pydantic import BaseModel
@@ -7,155 +12,137 @@ from datetime import datetime, timedelta
 from app.core.security import verify_token, TokenData
 from app.services.telegram import get_dialogs, get_messages, send_message
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Создаем роутер
 router = APIRouter()
 
-# Тестовые данные для диалогов
-SAMPLE_DIALOGS = [
-    {
-        "id": 1,
-        "title": "Иван Иванов",
-        "last_message": "Привет, как дела?",
-        "last_message_date": (datetime.now() - timedelta(minutes=5)).strftime("%H:%M"),
-        "unread_count": 2
-    },
-    {
-        "id": 2,
-        "title": "Мария Петрова",
-        "last_message": "Спасибо за информацию!",
-        "last_message_date": (datetime.now() - timedelta(hours=1)).strftime("%H:%M"),
-        "unread_count": 0
-    },
-    {
-        "id": 3,
-        "title": "Группа проекта",
-        "last_message": "Встреча завтра в 10:00",
-        "last_message_date": (datetime.now() - timedelta(days=1)).strftime("%d.%m"),
-        "unread_count": 5
-    }
-]
+# Модель диалога
+class Dialog(BaseModel):
+    id: str
+    title: str
+    last_message: Optional[str] = None
+    last_message_date: Optional[str] = None
+    unread_count: int = 0
+    photo: Optional[str] = None
 
-def verify_token(authorization: Optional[str] = Header(None)):
+# Функция для получения текущего пользователя из токена
+def get_current_user(authorization: Optional[str] = Header(None)):
     """
-    Проверяет токен авторизации
-    
-    Args:
-        authorization: Заголовок Authorization
-    
-    Returns:
-        str: ID пользователя
+    Получает текущего пользователя из токена авторизации
     """
     if not authorization:
         raise HTTPException(status_code=401, detail="Не указан токен авторизации")
     
-    # Проверяем формат токена
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Неверный формат токена")
-    
-    token = parts[1]
-    
-    # Для тестирования просто проверяем, что токен не пустой
-    if not token:
-        raise HTTPException(status_code=401, detail="Пустой токен")
-    
-    # В реальном приложении здесь должна быть проверка токена
-    # и получение ID пользователя из токена
-    
-    # Для тестирования извлекаем ID из токена
-    if token.startswith("telegram_token_"):
-        user_id = token.replace("telegram_token_", "")
-    elif token.startswith("test_token_"):
-        user_id = token.replace("test_token_", "")
-    else:
-        user_id = "unknown"
-    
-    return user_id
+    try:
+        # Проверяем формат токена
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            raise HTTPException(status_code=401, detail="Неверный формат токена")
+        
+        # Здесь должна быть проверка токена
+        # В данном случае просто проверяем, что токен не пустой
+        if not token:
+            raise HTTPException(status_code=401, detail="Токен не может быть пустым")
+        
+        # Извлекаем ID пользователя из токена
+        # В реальном приложении здесь должна быть проверка JWT
+        if token.startswith("test_token_"):
+            user_id = token.split("_")[-1]
+        else:
+            user_id = "unknown"
+        
+        return {"id": user_id}
+    except Exception as e:
+        logger.error(f"Ошибка при проверке токена: {e}")
+        raise HTTPException(status_code=401, detail="Неверный токен авторизации")
 
-@router.get("/", response_model=List[Dict[str, Any]])
-async def get_dialogs(user_id: str = Depends(verify_token)):
+# Эндпоинт для получения списка диалогов
+@router.get("/", response_model=List[Dialog])
+async def get_dialogs(current_user = Depends(get_current_user)):
     """
-    Получение списка диалогов пользователя
-    
-    Args:
-        user_id: ID пользователя (из токена)
-    
-    Returns:
-        List[Dict[str, Any]]: Список диалогов
+    Получает список диалогов пользователя
     """
-    # В реальном приложении здесь должен быть запрос к Telegram API
-    # для получения диалогов пользователя
+    logger.info(f"Получение диалогов для пользователя {current_user['id']}")
     
-    # Для тестирования возвращаем тестовые данные
-    # Добавляем случайные значения для разнообразия
-    dialogs = SAMPLE_DIALOGS.copy()
+    # В реальном приложении здесь должен быть запрос к API Telegram
+    # В данном случае возвращаем тестовые данные
+    now = datetime.now()
+    yesterday = now - timedelta(days=1)
     
-    # Добавляем случайные диалоги
-    for i in range(random.randint(1, 3)):
-        dialogs.append({
-            "id": 100 + i,
-            "title": f"Тестовый диалог {i+1}",
-            "last_message": f"Сообщение {random.randint(1, 100)}",
-            "last_message_date": (datetime.now() - timedelta(hours=random.randint(1, 24))).strftime("%H:%M"),
-            "unread_count": random.randint(0, 10)
-        })
+    dialogs = [
+        Dialog(
+            id="1",
+            title="Тестовый диалог 1",
+            last_message="Привет! Как дела?",
+            last_message_date=now.isoformat(),
+            unread_count=2
+        ),
+        Dialog(
+            id="2",
+            title="Тестовый диалог 2",
+            last_message="Посмотри это видео!",
+            last_message_date=yesterday.isoformat(),
+            unread_count=0
+        ),
+        Dialog(
+            id="3",
+            title="Тестовый диалог 3",
+            last_message="Спасибо за информацию",
+            last_message_date=(now - timedelta(days=2)).isoformat(),
+            unread_count=0
+        )
+    ]
     
     return dialogs
 
+# Эндпоинт для получения конкретного диалога
+@router.get("/{dialog_id}", response_model=Dialog)
+async def get_dialog(dialog_id: str, current_user = Depends(get_current_user)):
+    """
+    Получает информацию о конкретном диалоге
+    """
+    logger.info(f"Получение диалога {dialog_id} для пользователя {current_user['id']}")
+    
+    # В реальном приложении здесь должен быть запрос к API Telegram
+    # В данном случае возвращаем тестовые данные
+    now = datetime.now()
+    
+    dialog = Dialog(
+        id=dialog_id,
+        title=f"Диалог {dialog_id}",
+        last_message="Тестовое сообщение",
+        last_message_date=now.isoformat(),
+        unread_count=0
+    )
+    
+    return dialog
+
 @router.get("/{dialog_id}/messages", response_model=List[Dict[str, Any]])
-async def get_messages(dialog_id: int, user_id: str = Depends(verify_token)):
+async def get_dialog_messages(dialog_id: str, current_user = Depends(get_current_user)):
     """
-    Получение сообщений диалога
-    
-    Args:
-        dialog_id: ID диалога
-        user_id: ID пользователя (из токена)
-    
-    Returns:
-        List[Dict[str, Any]]: Список сообщений
+    Получает сообщения из диалога
     """
-    # В реальном приложении здесь должен быть запрос к Telegram API
-    # для получения сообщений диалога
+    logger.info(f"Получение сообщений из диалога {dialog_id} для пользователя {current_user['id']}")
     
-    # Для тестирования возвращаем тестовые данные
-    messages = []
-    for i in range(10):
-        is_outgoing = random.choice([True, False])
-        messages.append({
-            "id": i + 1,
-            "text": f"Тестовое сообщение {i+1}",
-            "date": (datetime.now() - timedelta(minutes=i*10)).strftime("%H:%M"),
-            "is_outgoing": is_outgoing,
-            "sender": "Вы" if is_outgoing else "Собеседник"
-        })
+    # Вызываем сервис для получения сообщений
+    messages = await get_messages(dialog_id, current_user['id'])
     
     return messages
 
-class MessageRequest(BaseModel):
-    """Запрос на отправку сообщения"""
-    text: str
-    reply_to: Optional[int] = None
-
 @router.post("/{dialog_id}/messages", response_model=Dict[str, Any])
-async def send_dialog_message(
-    dialog_id: int,
-    message: MessageRequest,
-    current_user: TokenData = Depends(verify_token)
-):
+async def send_dialog_message(dialog_id: str, message: Dict[str, Any], current_user = Depends(get_current_user)):
     """
     Отправляет сообщение в диалог
     """
-    try:
-        # Отправляем сообщение
-        result = await send_message(
-            current_user,
-            dialog_id,
-            message.text,
-            message.reply_to
-        )
-        
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        ) 
+    logger.info(f"Отправка сообщения в диалог {dialog_id} от пользователя {current_user['id']}")
+    
+    if 'text' not in message:
+        raise HTTPException(status_code=400, detail="Текст сообщения обязателен")
+    
+    # Вызываем сервис для отправки сообщения
+    result = await send_message(dialog_id, message['text'], current_user['id'])
+    
+    return result 
