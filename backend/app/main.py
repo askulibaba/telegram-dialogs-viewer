@@ -419,4 +419,74 @@ async def telegram_auth(request: Request):
         })
     except Exception as e:
         logger.error(f"Ошибка при авторизации через Telegram: {e}", exc_info=True)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/v1/dialogs")
+async def get_dialogs_direct(request: Request):
+    """
+    Прямой эндпоинт для получения диалогов (обходит проблему с CORS и Mixed Content)
+    """
+    logger.info("Прямой запрос диалогов")
+    
+    # Получаем токен из заголовка
+    authorization = request.headers.get("Authorization")
+    if not authorization:
+        return JSONResponse({"error": "Не указан токен авторизации"}, status_code=401)
+    
+    try:
+        # Проверяем формат токена
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            return JSONResponse({"error": "Неверный формат токена"}, status_code=401)
+        
+        # Извлекаем ID пользователя из токена
+        if token.startswith("test_token_"):
+            user_id = token.split("_")[-1]
+        else:
+            user_id = "unknown"
+        
+        # Возвращаем тестовые данные
+        from datetime import datetime, timedelta
+        import random
+        
+        now = datetime.now()
+        yesterday = now - timedelta(days=1)
+        
+        dialogs = [
+            {
+                "id": "1",
+                "title": "Тестовый диалог 1",
+                "last_message": "Привет! Как дела?",
+                "last_message_date": now.isoformat(),
+                "unread_count": 2
+            },
+            {
+                "id": "2",
+                "title": "Тестовый диалог 2",
+                "last_message": "Посмотри это видео!",
+                "last_message_date": yesterday.isoformat(),
+                "unread_count": 0
+            },
+            {
+                "id": "3",
+                "title": "Тестовый диалог 3",
+                "last_message": "Спасибо за информацию",
+                "last_message_date": (now - timedelta(days=2)).isoformat(),
+                "unread_count": 0
+            }
+        ]
+        
+        # Добавляем случайные диалоги
+        for i in range(random.randint(1, 3)):
+            dialogs.append({
+                "id": str(100 + i),
+                "title": f"Случайный диалог {i+1}",
+                "last_message": f"Сообщение {random.randint(1, 100)}",
+                "last_message_date": (now - timedelta(hours=random.randint(1, 24))).isoformat(),
+                "unread_count": random.randint(0, 10)
+            })
+        
+        return JSONResponse(dialogs)
+    except Exception as e:
+        logger.error(f"Ошибка при обработке запроса диалогов: {e}", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500) 
