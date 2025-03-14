@@ -144,7 +144,8 @@ async def get_client(user_id: int) -> TelegramClient:
     client = TelegramClient(
         session_file,
         settings.TELEGRAM_API_ID,
-        settings.TELEGRAM_API_HASH
+        settings.TELEGRAM_API_HASH,
+        device_model="Telegram Dialogs Viewer Web"
     )
     
     try:
@@ -207,7 +208,8 @@ async def send_code_request(phone_number: str) -> Dict[str, Any]:
         client = TelegramClient(
             session_file,
             settings.TELEGRAM_API_ID,
-            settings.TELEGRAM_API_HASH
+            settings.TELEGRAM_API_HASH,
+            device_model="Telegram Dialogs Viewer Web"
         )
         
         # Подключаемся к Telegram
@@ -368,7 +370,8 @@ async def sign_in(
             new_client = TelegramClient(
                 permanent_session_file,
                 settings.TELEGRAM_API_ID,
-                settings.TELEGRAM_API_HASH
+                settings.TELEGRAM_API_HASH,
+                device_model="Telegram Dialogs Viewer Web"
             )
             
             # Подключаемся к Telegram
