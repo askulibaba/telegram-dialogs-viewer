@@ -1,11 +1,12 @@
 import os
 import logging
 import asyncio
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
+from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, FloodWaitError, UserDeactivatedBanError
 from datetime import datetime, timedelta
 import random
+import time
 
 from app.core.config import settings
 
@@ -16,6 +17,37 @@ logger = logging.getLogger(__name__)
 # Словарь для хранения клиентов
 clients: Dict[int, TelegramClient] = {}
 
+# Словарь для отслеживания времени последнего запроса
+last_request_time: Dict[int, float] = {}
+
+# Кэш диалогов: user_id -> (dialogs, timestamp)
+dialogs_cache: Dict[int, Tuple[List[Dict[str, Any]], float]] = {}
+
+# Кэш сообщений: (user_id, dialog_id) -> (messages, timestamp)
+messages_cache: Dict[Tuple[int, int], Tuple[List[Dict[str, Any]], float]] = {}
+
+# Минимальный интервал между запросами (в секундах)
+MIN_REQUEST_INTERVAL = 2.0
+
+# Время жизни кэша (в секундах)
+CACHE_TTL = 60.0  # 1 минута
+
+async def wait_for_request_limit(user_id: int):
+    """
+    Ожидает, если необходимо, чтобы соблюсти ограничения на частоту запросов
+    
+    Args:
+        user_id: ID пользователя
+    """
+    current_time = time.time()
+    if user_id in last_request_time:
+        elapsed = current_time - last_request_time[user_id]
+        if elapsed < MIN_REQUEST_INTERVAL:
+            wait_time = MIN_REQUEST_INTERVAL - elapsed
+            logger.info(f"Ожидаем {wait_time:.2f} секунд перед следующим запросом для пользователя {user_id}")
+            await asyncio.sleep(wait_time)
+    
+    last_request_time[user_id] = time.time()
 
 async def get_client(user_id: int) -> TelegramClient:
     """
@@ -28,6 +60,9 @@ async def get_client(user_id: int) -> TelegramClient:
         TelegramClient: Клиент Telegram
     """
     logger.info(f"Запрос на получение клиента для пользователя {user_id}")
+    
+    # Соблюдаем ограничения на частоту запросов
+    await wait_for_request_limit(user_id)
     
     # Проверяем, есть ли клиент в кэше
     if user_id in clients:
@@ -162,6 +197,9 @@ async def send_code_request(phone_number: str) -> Dict[str, Any]:
         # Используем случайный ID для временного пользователя
         temp_user_id = random.randint(100000, 999999)
         
+        # Соблюдаем ограничения на частоту запросов
+        await wait_for_request_limit(temp_user_id)
+        
         # Создаем путь к файлу сессии
         session_file = os.path.join(settings.SESSIONS_DIR, f"temp_user_{temp_user_id}")
         
@@ -176,7 +214,18 @@ async def send_code_request(phone_number: str) -> Dict[str, Any]:
         await client.connect()
         
         # Отправляем запрос на получение кода
-        sent_code = await client.send_code_request(phone_number)
+        try:
+            sent_code = await client.send_code_request(phone_number)
+        except FloodWaitError as e:
+            # Если превышен лимит запросов, сообщаем пользователю, сколько нужно подождать
+            logger.error(f"Превышен лимит запросов к API Telegram: {str(e)}")
+            raise ValueError(f"Превышен лимит запросов к API Telegram. Пожалуйста, подождите {e.seconds} секунд и попробуйте снова.")
+        except UserDeactivatedBanError:
+            logger.error(f"Аккаунт заблокирован Telegram")
+            raise ValueError("Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке кода: {str(e)}")
+            raise ValueError(f"Ошибка при отправке кода: {str(e)}")
         
         # Сохраняем клиент для последующего использования
         clients[temp_user_id] = client
@@ -225,6 +274,9 @@ async def sign_in(
         if not client.is_connected():
             await client.connect()
         
+        # Соблюдаем ограничения на частоту запросов
+        await wait_for_request_limit(temp_user_id)
+        
         try:
             # Пытаемся авторизоваться по коду
             logger.info(f"Авторизация по коду для номера {phone_number}")
@@ -234,6 +286,13 @@ async def sign_in(
                 phone_code_hash=phone_code_hash
             )
             logger.info(f"Успешная авторизация по коду для номера {phone_number}")
+        except FloodWaitError as e:
+            # Если превышен лимит запросов, сообщаем пользователю, сколько нужно подождать
+            logger.error(f"Превышен лимит запросов к API Telegram: {str(e)}")
+            raise ValueError(f"Превышен лимит запросов к API Telegram. Пожалуйста, подождите {e.seconds} секунд и попробуйте снова.")
+        except UserDeactivatedBanError:
+            logger.error(f"Аккаунт заблокирован Telegram")
+            raise ValueError("Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.")
         except SessionPasswordNeededError:
             # Если требуется пароль двухфакторной аутентификации
             if not password:
@@ -347,18 +406,30 @@ async def sign_in(
         raise
 
 
-async def get_dialogs(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+async def get_dialogs(user_id: int, limit: int = 20, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Получает список диалогов пользователя
     
     Args:
         user_id: ID пользователя
         limit: Максимальное количество диалогов
+        force_refresh: Принудительно обновить кэш
         
     Returns:
         List[Dict[str, Any]]: Список диалогов
     """
     logger.info(f"Получение диалогов для пользователя {user_id}")
+    
+    # Проверяем кэш, если не требуется принудительное обновление
+    if not force_refresh and user_id in dialogs_cache:
+        cached_dialogs, timestamp = dialogs_cache[user_id]
+        elapsed = time.time() - timestamp
+        
+        if elapsed < CACHE_TTL:
+            logger.info(f"Возвращаем кэшированные диалоги для пользователя {user_id} (возраст: {elapsed:.2f} сек)")
+            return cached_dialogs
+        else:
+            logger.info(f"Кэш диалогов устарел для пользователя {user_id} (возраст: {elapsed:.2f} сек)")
     
     try:
         # Получаем клиент
@@ -371,10 +442,24 @@ async def get_dialogs(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
             logger.info(f"Клиент не подключен, подключаемся")
             await client.connect()
         
+        # Соблюдаем ограничения на частоту запросов
+        await wait_for_request_limit(user_id)
+        
         # Получаем диалоги
         logger.info(f"Запрашиваем диалоги с лимитом {limit}")
-        dialogs = await client.get_dialogs(limit=limit)
-        logger.info(f"Получено {len(dialogs)} диалогов")
+        try:
+            dialogs = await client.get_dialogs(limit=limit)
+            logger.info(f"Получено {len(dialogs)} диалогов")
+        except FloodWaitError as e:
+            # Если превышен лимит запросов, сообщаем пользователю, сколько нужно подождать
+            logger.error(f"Превышен лимит запросов к API Telegram: {str(e)}")
+            raise ValueError(f"Превышен лимит запросов к API Telegram. Пожалуйста, подождите {e.seconds} секунд и попробуйте снова.")
+        except UserDeactivatedBanError:
+            logger.error(f"Аккаунт заблокирован Telegram")
+            raise ValueError("Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.")
+        except Exception as e:
+            logger.error(f"Ошибка при получении диалогов: {str(e)}")
+            raise ValueError(f"Ошибка при получении диалогов: {str(e)}")
         
         # Форматируем результат
         result = []
@@ -416,7 +501,10 @@ async def get_dialogs(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
                 "unread_count": dialog.unread_count
             })
         
-        logger.info(f"Возвращаем {len(result)} диалогов")
+        # Сохраняем результат в кэш
+        dialogs_cache[user_id] = (result, time.time())
+        
+        logger.info(f"Возвращаем {len(result)} диалогов и обновляем кэш")
         return result
     except Exception as e:
         logger.error(f"Ошибка при получении диалогов: {str(e)}")
@@ -480,7 +568,7 @@ async def get_test_dialogs(user_id: str) -> List[Dict[str, Any]]:
     return dialogs
 
 
-async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id: int = 0) -> List[Dict[str, Any]]:
+async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id: int = 0, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Получает сообщения из диалога
     
@@ -489,11 +577,26 @@ async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id:
         dialog_id: ID диалога
         limit: Максимальное количество сообщений
         offset_id: ID сообщения, с которого начинать
+        force_refresh: Принудительно обновить кэш
         
     Returns:
         List[Dict[str, Any]]: Список сообщений
     """
     logger.info(f"Получение сообщений из диалога {dialog_id} для пользователя {user_id}")
+    
+    # Создаем ключ для кэша
+    cache_key = (user_id, dialog_id)
+    
+    # Проверяем кэш, если не требуется принудительное обновление и нет смещения
+    if not force_refresh and offset_id == 0 and cache_key in messages_cache:
+        cached_messages, timestamp = messages_cache[cache_key]
+        elapsed = time.time() - timestamp
+        
+        if elapsed < CACHE_TTL:
+            logger.info(f"Возвращаем кэшированные сообщения для диалога {dialog_id} (возраст: {elapsed:.2f} сек)")
+            return cached_messages
+        else:
+            logger.info(f"Кэш сообщений устарел для диалога {dialog_id} (возраст: {elapsed:.2f} сек)")
     
     try:
         # Получаем клиент
@@ -503,12 +606,26 @@ async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id:
         if not client.is_connected():
             await client.connect()
         
+        # Соблюдаем ограничения на частоту запросов
+        await wait_for_request_limit(user_id)
+        
         # Получаем сообщения
-        messages = await client.get_messages(
-            dialog_id,
-            limit=limit,
-            offset_id=offset_id
-        )
+        try:
+            messages = await client.get_messages(
+                dialog_id,
+                limit=limit,
+                offset_id=offset_id
+            )
+        except FloodWaitError as e:
+            # Если превышен лимит запросов, сообщаем пользователю, сколько нужно подождать
+            logger.error(f"Превышен лимит запросов к API Telegram: {str(e)}")
+            raise ValueError(f"Превышен лимит запросов к API Telegram. Пожалуйста, подождите {e.seconds} секунд и попробуйте снова.")
+        except UserDeactivatedBanError:
+            logger.error(f"Аккаунт заблокирован Telegram")
+            raise ValueError("Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.")
+        except Exception as e:
+            logger.error(f"Ошибка при получении сообщений: {str(e)}")
+            raise ValueError(f"Ошибка при получении сообщений: {str(e)}")
         
         # Форматируем результат
         result = []
@@ -536,6 +653,11 @@ async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id:
                 "sender": sender_name,
                 "reply_to_msg_id": message.reply_to_msg_id
             })
+        
+        # Сохраняем результат в кэш, только если нет смещения
+        if offset_id == 0:
+            messages_cache[cache_key] = (result, time.time())
+            logger.info(f"Обновлен кэш сообщений для диалога {dialog_id}")
         
         return result
     except Exception as e:
@@ -575,29 +697,6 @@ async def get_test_messages(dialog_id: str, user_id: str) -> List[Dict[str, Any]
     return messages
 
 
-async def send_message(dialog_id: str, text: str, user_id: str) -> Dict[str, Any]:
-    """
-    Отправляет сообщение в диалог
-    
-    Args:
-        dialog_id: ID диалога
-        text: Текст сообщения
-        user_id: ID пользователя
-    
-    Returns:
-        Dict[str, Any]: Результат отправки
-    """
-    logger.info(f"Отправка сообщения в диалог {dialog_id} от пользователя {user_id}: {text}")
-    
-    # В реальном приложении здесь должен быть запрос к API Telegram
-    # В данном случае возвращаем тестовый результат
-    return {
-        "success": True,
-        "message_id": str(random.randint(1000, 9999)),
-        "date": datetime.now().isoformat()
-    }
-
-
 async def send_message(user_id: int, dialog_id: int, text: str, reply_to: Optional[int] = None) -> Dict[str, Any]:
     """
     Отправляет сообщение в диалог
@@ -619,12 +718,26 @@ async def send_message(user_id: int, dialog_id: int, text: str, reply_to: Option
         if not client.is_connected():
             await client.connect()
         
+        # Соблюдаем ограничения на частоту запросов
+        await wait_for_request_limit(user_id)
+        
         # Отправляем сообщение
-        message = await client.send_message(
-            dialog_id,
-            text,
-            reply_to=reply_to
-        )
+        try:
+            message = await client.send_message(
+                dialog_id,
+                text,
+                reply_to=reply_to
+            )
+        except FloodWaitError as e:
+            # Если превышен лимит запросов, сообщаем пользователю, сколько нужно подождать
+            logger.error(f"Превышен лимит запросов к API Telegram: {str(e)}")
+            raise ValueError(f"Превышен лимит запросов к API Telegram. Пожалуйста, подождите {e.seconds} секунд и попробуйте снова.")
+        except UserDeactivatedBanError:
+            logger.error(f"Аккаунт заблокирован Telegram")
+            raise ValueError("Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке сообщения: {str(e)}")
+            raise ValueError(f"Ошибка при отправке сообщения: {str(e)}")
         
         # Форматируем результат
         result = {
@@ -633,6 +746,12 @@ async def send_message(user_id: int, dialog_id: int, text: str, reply_to: Option
             "date": message.date.isoformat(),
             "out": message.out
         }
+        
+        # Инвалидируем кэш сообщений для этого диалога
+        cache_key = (user_id, dialog_id)
+        if cache_key in messages_cache:
+            del messages_cache[cache_key]
+            logger.info(f"Кэш сообщений для диалога {dialog_id} инвалидирован после отправки сообщения")
         
         return result
     except Exception as e:

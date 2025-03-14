@@ -173,11 +173,12 @@ header .container {
 }
 
 .error-message {
-    background-color: #ffebee;
-    color: #c62828;
+    background-color: #f8d7da;
+    color: #721c24;
     padding: 15px;
-    border-radius: 4px;
-    margin: 20px 0;
+    margin: 15px 0;
+    border-radius: 5px;
+    border: 1px solid #f5c6cb;
     text-align: center;
 }
 
@@ -402,4 +403,32 @@ footer .container {
     .footer-links a {
         margin-left: 0;
     }
+}
+
+/* Стили для кнопок обновления и повторной попытки */
+.refresh-button,
+.retry-button {
+    display: block;
+    margin: 15px auto;
+    padding: 10px 15px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.refresh-button:hover,
+.retry-button:hover {
+    background-color: #2980b9;
+}
+
+.retry-button {
+    background-color: #e74c3c;
+}
+
+.retry-button:hover {
+    background-color: #c0392b;
 } 

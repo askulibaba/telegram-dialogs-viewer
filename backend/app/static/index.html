@@ -260,7 +260,7 @@
         }
         
         // Функция для загрузки диалогов
-        async function loadDialogs() {
+        async function loadDialogs(forceRefresh = false) {
             const loading = document.getElementById('loading');
             const dialogsList = document.getElementById('dialogs-list');
             const errorMessage = document.getElementById('error-message');
@@ -279,7 +279,7 @@
                 console.log('Загрузка диалогов с токеном:', token);
                 
                 // Используем полный URL с HTTPS
-                const apiUrl = `${window.location.origin}/api/v1/dialogs`;
+                const apiUrl = `${window.location.origin}/api/v1/dialogs${forceRefresh ? '?force_refresh=true' : ''}`;
                 console.log('URL для загрузки диалогов:', apiUrl);
                 
                 const response = await fetch(apiUrl, {
@@ -291,7 +291,19 @@
                 console.log('Ответ от сервера при загрузке диалогов:', response);
                 
                 if (!response.ok) {
-                    throw new Error(`Ошибка при загрузке диалогов: ${response.status} ${response.statusText}`);
+                    const errorData = await response.json();
+                    const errorDetail = errorData.detail || `Ошибка при загрузке диалогов: ${response.status} ${response.statusText}`;
+                    
+                    // Обрабатываем специальные ошибки
+                    if (response.status === 429) {
+                        // Превышен лимит запросов
+                        throw new Error(`${errorDetail} Пожалуйста, попробуйте позже.`);
+                    } else if (response.status === 403 && errorDetail.includes('заблокирован')) {
+                        // Аккаунт заблокирован
+                        throw new Error(`Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.`);
+                    } else {
+                        throw new Error(errorDetail);
+                    }
                 }
                 
                 const data = await response.json();
@@ -313,16 +325,48 @@
                             <div class="dialog-last-message">${dialog.last_message || 'Нет сообщений'}</div>
                             <div class="dialog-time">${dialog.last_message_date || ''}</div>
                         `;
+                        
+                        // Добавляем обработчик клика для перехода к сообщениям
+                        dialogElement.addEventListener('click', function() {
+                            loadMessages(dialog.id);
+                        });
+                        
                         dialogsList.appendChild(dialogElement);
                     });
+                    
+                    // Добавляем кнопку обновления
+                    const refreshButton = document.createElement('button');
+                    refreshButton.className = 'refresh-button';
+                    refreshButton.textContent = 'Обновить диалоги';
+                    refreshButton.addEventListener('click', function() {
+                        loadDialogs(true);
+                    });
+                    dialogsList.appendChild(refreshButton);
                 }
             } catch (error) {
                 console.error('Ошибка при загрузке диалогов:', error);
                 errorMessage.textContent = error.message;
                 errorMessage.style.display = 'block';
+                
+                // Добавляем кнопку повторной попытки
+                const retryButton = document.createElement('button');
+                retryButton.className = 'retry-button';
+                retryButton.textContent = 'Повторить попытку';
+                retryButton.addEventListener('click', function() {
+                    loadDialogs(true);
+                });
+                errorMessage.appendChild(retryButton);
             } finally {
                 loading.style.display = 'none';
             }
+        }
+        
+        // Функция для загрузки сообщений
+        async function loadMessages(dialogId, forceRefresh = false) {
+            // Реализация загрузки сообщений
+            console.log(`Загрузка сообщений для диалога ${dialogId}, forceRefresh=${forceRefresh}`);
+            
+            // Здесь должен быть код для загрузки и отображения сообщений
         }
         
         // Функция для выхода из аккаунта

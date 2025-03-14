@@ -61,13 +61,16 @@ def get_current_user(authorization: Optional[str] = Header(None)):
 
 # Эндпоинт для получения списка диалогов
 @router.get("/", response_model=List[Dict[str, Any]])
-async def list_dialogs(current_user = Depends(get_current_user)):
+async def list_dialogs(
+    force_refresh: bool = Query(False, description="Принудительно обновить кэш"),
+    current_user = Depends(get_current_user)
+):
     """
     Получает список диалогов пользователя
     """
     try:
         user_id = current_user['id']
-        logger.info(f"Получение диалогов для пользователя {user_id}")
+        logger.info(f"Получение диалогов для пользователя {user_id}, force_refresh={force_refresh}")
         
         # Преобразуем ID пользователя в целое число
         try:
@@ -78,17 +81,25 @@ async def list_dialogs(current_user = Depends(get_current_user)):
         
         # Получаем диалоги из Telegram
         try:
-            dialogs = await get_dialogs(user_id_int)
+            dialogs = await get_dialogs(user_id_int, force_refresh=force_refresh)
             logger.info(f"Получено {len(dialogs)} диалогов для пользователя {user_id}")
             return dialogs
         except ValueError as e:
             logger.error(f"Ошибка при получении диалогов: {e}")
-            if "Сессия для пользователя" in str(e) and "не найдена" in str(e):
+            error_message = str(e)
+            
+            if "Превышен лимит запросов к API Telegram" in error_message:
+                # Если превышен лимит запросов, возвращаем соответствующую ошибку
+                raise HTTPException(status_code=429, detail=error_message)
+            elif "Аккаунт заблокирован Telegram" in error_message:
+                # Если аккаунт заблокирован, возвращаем соответствующую ошибку
+                raise HTTPException(status_code=403, detail=error_message)
+            elif "Сессия для пользователя" in error_message and "не найдена" in error_message:
                 raise HTTPException(status_code=401, detail="Требуется авторизация в Telegram")
-            elif "Пользователь не авторизован" in str(e):
+            elif "Пользователь не авторизован" in error_message:
                 raise HTTPException(status_code=401, detail="Требуется авторизация в Telegram")
             else:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
         logger.error(f"Ошибка при получении диалогов: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -99,23 +110,40 @@ async def list_messages(
     dialog_id: int,
     limit: int = Query(20, ge=1, le=100),
     offset_id: int = Query(0, ge=0),
+    force_refresh: bool = Query(False, description="Принудительно обновить кэш"),
     current_user = Depends(get_current_user)
 ):
     """
     Получает сообщения из диалога
     """
     try:
-        logger.info(f"Получение сообщений из диалога {dialog_id} для пользователя {current_user['id']}")
+        user_id = current_user['id']
+        logger.info(f"Получение сообщений из диалога {dialog_id} для пользователя {user_id}, limit={limit}, offset_id={offset_id}, force_refresh={force_refresh}")
+        
+        # Преобразуем ID пользователя в целое число
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            logger.error(f"Невозможно преобразовать ID пользователя '{user_id}' в целое число")
+            raise HTTPException(status_code=400, detail="Неверный формат ID пользователя")
         
         # Получаем сообщения из Telegram
-        messages = await get_messages(
-            int(current_user['id']),
-            dialog_id,
-            limit=limit,
-            offset_id=offset_id
-        )
-        
-        return messages
+        try:
+            messages = await get_messages(user_id_int, dialog_id, limit, offset_id, force_refresh=force_refresh)
+            logger.info(f"Получено {len(messages)} сообщений из диалога {dialog_id}")
+            return messages
+        except ValueError as e:
+            logger.error(f"Ошибка при получении сообщений: {e}")
+            error_message = str(e)
+            
+            if "Превышен лимит запросов к API Telegram" in error_message:
+                # Если превышен лимит запросов, возвращаем соответствующую ошибку
+                raise HTTPException(status_code=429, detail=error_message)
+            elif "Аккаунт заблокирован Telegram" in error_message:
+                # Если аккаунт заблокирован, возвращаем соответствующую ошибку
+                raise HTTPException(status_code=403, detail=error_message)
+            else:
+                raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
         logger.error(f"Ошибка при получении сообщений: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -131,21 +159,38 @@ async def send_dialog_message(
     Отправляет сообщение в диалог
     """
     try:
-        logger.info(f"Отправка сообщения в диалог {dialog_id} от пользователя {current_user['id']}")
+        user_id = current_user['id']
+        logger.info(f"Отправка сообщения в диалог {dialog_id} от пользователя {user_id}")
         
         # Проверяем, что сообщение содержит текст
         if "text" not in message or not message["text"]:
             raise HTTPException(status_code=400, detail="Сообщение должно содержать текст")
         
-        # Отправляем сообщение через Telegram
-        result = await send_message(
-            int(current_user['id']),
-            dialog_id,
-            message["text"],
-            message.get("reply_to")
-        )
+        # Преобразуем ID пользователя в целое число
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            logger.error(f"Невозможно преобразовать ID пользователя '{user_id}' в целое число")
+            raise HTTPException(status_code=400, detail="Неверный формат ID пользователя")
         
-        return result
+        # Отправляем сообщение
+        try:
+            reply_to = message.get("reply_to")
+            result = await send_message(user_id_int, dialog_id, message["text"], reply_to)
+            logger.info(f"Сообщение успешно отправлено в диалог {dialog_id}")
+            return result
+        except ValueError as e:
+            logger.error(f"Ошибка при отправке сообщения: {e}")
+            error_message = str(e)
+            
+            if "Превышен лимит запросов к API Telegram" in error_message:
+                # Если превышен лимит запросов, возвращаем соответствующую ошибку
+                raise HTTPException(status_code=429, detail=error_message)
+            elif "Аккаунт заблокирован Telegram" in error_message:
+                # Если аккаунт заблокирован, возвращаем соответствующую ошибку
+                raise HTTPException(status_code=403, detail=error_message)
+            else:
+                raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
         logger.error(f"Ошибка при отправке сообщения: {e}")
         raise HTTPException(status_code=500, detail=str(e))
