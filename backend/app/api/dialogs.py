@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from pydantic import BaseModel
 import random
 from datetime import datetime, timedelta
+import os
 
 from app.core.security import verify_token, TokenData
 from app.services.telegram import get_dialogs, get_messages, send_message
@@ -95,14 +96,39 @@ async def list_dialogs(
                 # Если аккаунт заблокирован, возвращаем соответствующую ошибку
                 raise HTTPException(status_code=403, detail=error_message)
             elif "Сессия для пользователя" in error_message and "не найдена" in error_message:
-                raise HTTPException(status_code=401, detail="Требуется авторизация в Telegram")
+                # Добавляем подробную информацию о сессии
+                session_path = f"/app/backend/app/sessions/user_{user_id_int}.session"
+                session_exists = os.path.exists(session_path)
+                sessions_dir = "/app/backend/app/sessions"
+                sessions_dir_exists = os.path.exists(sessions_dir)
+                sessions_list = os.listdir(sessions_dir) if sessions_dir_exists else []
+                
+                detail = {
+                    "message": "Требуется авторизация в Telegram",
+                    "error": error_message,
+                    "session_info": {
+                        "user_id": user_id_int,
+                        "session_path": session_path,
+                        "session_exists": session_exists,
+                        "sessions_dir_exists": sessions_dir_exists,
+                        "sessions_list": sessions_list
+                    }
+                }
+                raise HTTPException(status_code=401, detail=detail)
             elif "Пользователь не авторизован" in error_message:
                 raise HTTPException(status_code=401, detail="Требуется авторизация в Telegram")
             else:
+                # Возвращаем подробную информацию об ошибке
                 raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
         logger.error(f"Ошибка при получении диалогов: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Возвращаем подробную информацию об ошибке
+        error_detail = {
+            "message": "Внутренняя ошибка сервера",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+        raise HTTPException(status_code=500, detail=error_detail)
 
 # Эндпоинт для получения сообщений из диалога
 @router.get("/{dialog_id}/messages", response_model=List[Dict[str, Any]])
@@ -142,11 +168,38 @@ async def list_messages(
             elif "Аккаунт заблокирован Telegram" in error_message:
                 # Если аккаунт заблокирован, возвращаем соответствующую ошибку
                 raise HTTPException(status_code=403, detail=error_message)
+            elif "Сессия для пользователя" in error_message and "не найдена" in error_message:
+                # Добавляем подробную информацию о сессии
+                session_path = f"/app/backend/app/sessions/user_{user_id_int}.session"
+                session_exists = os.path.exists(session_path)
+                sessions_dir = "/app/backend/app/sessions"
+                sessions_dir_exists = os.path.exists(sessions_dir)
+                sessions_list = os.listdir(sessions_dir) if sessions_dir_exists else []
+                
+                detail = {
+                    "message": "Требуется авторизация в Telegram",
+                    "error": error_message,
+                    "session_info": {
+                        "user_id": user_id_int,
+                        "session_path": session_path,
+                        "session_exists": session_exists,
+                        "sessions_dir_exists": sessions_dir_exists,
+                        "sessions_list": sessions_list
+                    }
+                }
+                raise HTTPException(status_code=401, detail=detail)
             else:
+                # Возвращаем подробную информацию об ошибке
                 raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
         logger.error(f"Ошибка при получении сообщений: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Возвращаем подробную информацию об ошибке
+        error_detail = {
+            "message": "Внутренняя ошибка сервера",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+        raise HTTPException(status_code=500, detail=error_detail)
 
 # Эндпоинт для отправки сообщения в диалог
 @router.post("/{dialog_id}/messages", response_model=Dict[str, Any])

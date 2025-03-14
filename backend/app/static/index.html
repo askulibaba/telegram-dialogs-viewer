@@ -336,165 +336,186 @@
         }
         
         // Функция для загрузки диалогов
-        async function loadDialogs(forceRefresh = false) {
-            const loading = document.getElementById('loading');
-            const dialogsList = document.getElementById('dialogs-list');
-            const errorMessage = document.getElementById('error-message');
-            
-            loading.style.display = 'block';
-            dialogsList.innerHTML = '';
-            errorMessage.style.display = 'none';
-            
-            try {
-                const token = localStorage.getItem('access_token');
-                
-                if (!token) {
-                    throw new Error('Не найден токен авторизации');
-                }
-                
-                console.log('Загрузка диалогов с токеном:', token);
-                
-                // Используем полный URL с HTTPS
-                const apiUrl = `${window.location.origin}/api/v1/dialogs${forceRefresh ? '?force_refresh=true' : ''}`;
-                console.log('URL для загрузки диалогов:', apiUrl);
-                
-                // Добавляем отладочную информацию в консоль
-                console.log('Детали запроса диалогов:');
-                console.log('- URL:', apiUrl);
-                console.log('- Метод: GET');
-                console.log('- Заголовки:', { 'Authorization': `Bearer ${token.substring(0, 10)}...` });
-                console.log('- Force Refresh:', forceRefresh);
-                
-                const response = await fetch(apiUrl, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                
-                console.log('Ответ от сервера при загрузке диалогов:');
-                console.log('- Статус:', response.status);
-                console.log('- Статус текст:', response.statusText);
-                console.log('- Заголовки:', Object.fromEntries([...response.headers.entries()]));
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    console.error('Ошибка при загрузке диалогов (детали):', errorData);
-                    const errorDetail = errorData.detail || `Ошибка при загрузке диалогов: ${response.status} ${response.statusText}`;
-                    
-                    // Обрабатываем специальные ошибки
-                    if (response.status === 429) {
-                        // Превышен лимит запросов
-                        throw new Error(`${errorDetail} Пожалуйста, попробуйте позже.`);
-                    } else if (response.status === 403 && errorDetail.includes('заблокирован')) {
-                        // Аккаунт заблокирован
-                        throw new Error(`Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.`);
-                    } else if (response.status === 401 && (errorDetail.includes('Требуется авторизация в Telegram') || 
-                               errorDetail.includes('Сессия для пользователя') && errorDetail.includes('не найдена'))) {
-                        // Проблема с сессией Telegram
-                        const errorMsg = 'Требуется авторизация в Telegram. Пожалуйста, авторизуйтесь через вкладку "Вход по телефону".';
-                        errorMessage.textContent = errorMsg;
-                        errorMessage.style.display = 'block';
-                        
-                        // Добавляем кнопку для перехода к авторизации по телефону
-                        const authButton = document.createElement('button');
-                        authButton.className = 'auth-button';
-                        authButton.textContent = 'Авторизоваться по телефону';
-                        authButton.addEventListener('click', function() {
-                            // Переключаемся на вкладку авторизации по телефону
-                            document.querySelector('.auth-tab-button[data-tab="phone-tab"]').click();
-                            document.getElementById('auth-section').style.display = 'block';
-                            document.getElementById('dialogs-section').style.display = 'none';
-                        });
-                        errorMessage.appendChild(document.createElement('br'));
-                        errorMessage.appendChild(authButton);
-                        
-                        loading.style.display = 'none';
-                        return;
-                    } else {
-                        throw new Error(errorDetail);
-                    }
-                }
-                
-                const data = await response.json();
-                console.log('Полученные диалоги (детали):', data);
-                console.log('Количество диалогов:', data.length);
-                
-                // Проверяем, есть ли в ответе тестовые диалоги
-                const isMockData = data.some(dialog => 
-                    dialog.title && (dialog.title.includes('Тестовый диалог') || dialog.title.includes('Случайный диалог'))
-                );
-                
-                if (isMockData) {
-                    console.warn('ВНИМАНИЕ: Получены тестовые диалоги вместо реальных!');
-                    
-                    // Добавляем предупреждение в интерфейс
-                    const warningElement = document.createElement('div');
-                    warningElement.className = 'warning-message';
-                    warningElement.innerHTML = `
-                        <strong>Внимание!</strong> Отображаются тестовые диалоги вместо реальных.
-                        Возможные причины:
-                        <ul>
-                            <li>Отсутствует сессия Telegram</li>
-                            <li>Проблема с авторизацией в Telegram</li>
-                            <li>Ошибка при получении реальных диалогов</li>
-                        </ul>
-                        Попробуйте авторизоваться через вкладку "Вход по телефону".
-                    `;
-                    dialogsList.appendChild(warningElement);
-                }
-                
-                if (data.length === 0) {
-                    dialogsList.innerHTML = '<p>У вас нет диалогов</p>';
-                } else {
-                    // Отображаем диалоги
-                    data.forEach(dialog => {
-                        const dialogElement = document.createElement('div');
-                        dialogElement.className = 'dialog-card';
-                        dialogElement.innerHTML = `
-                            <div class="dialog-header">
-                                <div class="dialog-avatar"></div>
-                                <div class="dialog-name">${dialog.title || 'Без названия'}</div>
-                                ${dialog.unread_count ? `<div class="unread-badge">${dialog.unread_count}</div>` : ''}
-                            </div>
-                            <div class="dialog-last-message">${dialog.last_message || 'Нет сообщений'}</div>
-                            <div class="dialog-time">${dialog.last_message_date || ''}</div>
-                            <div class="dialog-debug">ID: ${dialog.id}, Тип: ${dialog.type || 'неизвестно'}</div>
-                        `;
-                        
-                        // Добавляем обработчик клика для перехода к сообщениям
-                        dialogElement.addEventListener('click', function() {
-                            loadMessages(dialog.id);
-                        });
-                        
-                        dialogsList.appendChild(dialogElement);
-                    });
-                    
-                    // Добавляем кнопку обновления
-                    const refreshButton = document.createElement('button');
-                    refreshButton.className = 'refresh-button';
-                    refreshButton.textContent = 'Обновить диалоги';
-                    refreshButton.addEventListener('click', function() {
-                        loadDialogs(true);
-                    });
-                    dialogsList.appendChild(refreshButton);
-                }
-            } catch (error) {
-                console.error('Ошибка при загрузке диалогов:', error);
-                errorMessage.textContent = error.message;
-                errorMessage.style.display = 'block';
-                
-                // Добавляем кнопку повторной попытки
-                const retryButton = document.createElement('button');
-                retryButton.className = 'retry-button';
-                retryButton.textContent = 'Повторить попытку';
-                retryButton.addEventListener('click', function() {
-                    loadDialogs(true);
-                });
-                errorMessage.appendChild(document.createElement('br'));
-                errorMessage.appendChild(retryButton);
-            } finally {
-                loading.style.display = 'none';
+        function loadDialogs(forceRefresh = false) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                showLoginForm();
+                return;
             }
+
+            // Очищаем список диалогов и показываем индикатор загрузки
+            const dialogsList = document.getElementById('dialogs-list');
+            dialogsList.innerHTML = '<div class="loading">Загрузка диалогов...</div>';
+            
+            // Формируем URL с параметром force_refresh
+            const url = `/api/dialogs?force_refresh=${forceRefresh}`;
+            
+            console.log(`Загрузка диалогов с URL: ${url}`);
+            
+            fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => {
+                console.log(`Статус ответа: ${response.status}`);
+                
+                if (response.status === 401) {
+                    // Если требуется авторизация в Telegram
+                    return response.json().then(data => {
+                        console.log('Ошибка авторизации:', data);
+                        
+                        // Проверяем, есть ли подробная информация о сессии
+                        if (data.detail && typeof data.detail === 'object' && data.detail.session_info) {
+                            const sessionInfo = data.detail.session_info;
+                            console.log('Информация о сессии:', sessionInfo);
+                            
+                            // Отображаем подробную информацию об ошибке
+                            dialogsList.innerHTML = `
+                                <div class="error-message">
+                                    <h3>Требуется авторизация в Telegram</h3>
+                                    <p>${data.detail.error || 'Сессия не найдена'}</p>
+                                    <div class="debug-info">
+                                        <h4>Отладочная информация:</h4>
+                                        <ul>
+                                            <li>ID пользователя: ${sessionInfo.user_id}</li>
+                                            <li>Путь к сессии: ${sessionInfo.session_path}</li>
+                                            <li>Сессия существует: ${sessionInfo.session_exists ? 'Да' : 'Нет'}</li>
+                                            <li>Директория сессий существует: ${sessionInfo.sessions_dir_exists ? 'Да' : 'Нет'}</li>
+                                            <li>Список сессий: ${sessionInfo.sessions_list.length > 0 ? sessionInfo.sessions_list.join(', ') : 'Пусто'}</li>
+                                        </ul>
+                                    </div>
+                                    <button class="auth-button" onclick="showTelegramAuthForm()">Авторизоваться в Telegram</button>
+                                </div>
+                            `;
+                        } else {
+                            // Стандартное сообщение об авторизации
+                            dialogsList.innerHTML = `
+                                <div class="error-message">
+                                    <p>Требуется авторизация в Telegram</p>
+                                    <button class="auth-button" onclick="showTelegramAuthForm()">Авторизоваться в Telegram</button>
+                                </div>
+                            `;
+                        }
+                        throw new Error('Требуется авторизация в Telegram');
+                    });
+                } else if (response.status === 429) {
+                    // Если превышен лимит запросов
+                    return response.json().then(data => {
+                        console.log('Превышен лимит запросов:', data);
+                        dialogsList.innerHTML = `
+                            <div class="error-message">
+                                <h3>Превышен лимит запросов к API Telegram</h3>
+                                <p>${data.detail || 'Пожалуйста, подождите некоторое время перед повторной попыткой.'}</p>
+                                <button class="retry-button" onclick="loadDialogs(true)">Повторить</button>
+                            </div>
+                        `;
+                        throw new Error('Превышен лимит запросов к API Telegram');
+                    });
+                } else if (response.status === 403) {
+                    // Если аккаунт заблокирован
+                    return response.json().then(data => {
+                        console.log('Аккаунт заблокирован:', data);
+                        dialogsList.innerHTML = `
+                            <div class="error-message">
+                                <h3>Аккаунт заблокирован Telegram</h3>
+                                <p>${data.detail || 'Ваш аккаунт был заблокирован Telegram. Пожалуйста, проверьте статус вашего аккаунта в официальном приложении.'}</p>
+                            </div>
+                        `;
+                        throw new Error('Аккаунт заблокирован Telegram');
+                    });
+                } else if (!response.ok) {
+                    // Другие ошибки
+                    return response.json().then(data => {
+                        console.log('Ошибка при загрузке диалогов:', data);
+                        
+                        // Проверяем, есть ли подробная информация об ошибке
+                        let errorMessage = 'Произошла ошибка при загрузке диалогов.';
+                        let errorDetails = '';
+                        
+                        if (data.detail) {
+                            if (typeof data.detail === 'object') {
+                                errorMessage = data.detail.message || errorMessage;
+                                errorDetails = `<pre>${JSON.stringify(data.detail, null, 2)}</pre>`;
+                            } else {
+                                errorMessage = data.detail;
+                            }
+                        }
+                        
+                        dialogsList.innerHTML = `
+                            <div class="error-message">
+                                <h3>Ошибка</h3>
+                                <p>${errorMessage}</p>
+                                ${errorDetails}
+                                <button class="retry-button" onclick="loadDialogs(true)">Повторить</button>
+                            </div>
+                        `;
+                        throw new Error(`Ошибка при загрузке диалогов: ${errorMessage}`);
+                    });
+                }
+                
+                return response.json();
+            })
+            .then(dialogs => {
+                console.log(`Получено диалогов: ${dialogs.length}`);
+                
+                // Очищаем список диалогов
+                dialogsList.innerHTML = '';
+                
+                // Добавляем кнопку обновления
+                const refreshButton = document.createElement('button');
+                refreshButton.className = 'refresh-button';
+                refreshButton.innerHTML = 'Обновить диалоги';
+                refreshButton.onclick = () => loadDialogs(true);
+                dialogsList.appendChild(refreshButton);
+                
+                // Если диалогов нет, показываем сообщение
+                if (dialogs.length === 0) {
+                    const emptyMessage = document.createElement('div');
+                    emptyMessage.className = 'empty-message';
+                    emptyMessage.innerHTML = 'У вас нет диалогов';
+                    dialogsList.appendChild(emptyMessage);
+                    return;
+                }
+                
+                // Отображаем диалоги
+                dialogs.forEach(dialog => {
+                    const dialogItem = document.createElement('div');
+                    dialogItem.className = 'dialog-item';
+                    dialogItem.onclick = () => loadMessages(dialog.id, dialog.title);
+                    
+                    const avatar = document.createElement('div');
+                    avatar.className = 'dialog-avatar';
+                    if (dialog.photo) {
+                        avatar.innerHTML = `<img src="${dialog.photo}" alt="${dialog.title}">`;
+                    } else {
+                        avatar.innerHTML = `<div class="avatar-placeholder">${dialog.title.charAt(0)}</div>`;
+                    }
+                    
+                    const info = document.createElement('div');
+                    info.className = 'dialog-info';
+                    
+                    const title = document.createElement('div');
+                    title.className = 'dialog-title';
+                    title.textContent = dialog.title;
+                    
+                    const lastMessage = document.createElement('div');
+                    lastMessage.className = 'dialog-last-message';
+                    lastMessage.textContent = dialog.last_message || 'Нет сообщений';
+                    
+                    info.appendChild(title);
+                    info.appendChild(lastMessage);
+                    
+                    dialogItem.appendChild(avatar);
+                    dialogItem.appendChild(info);
+                    
+                    dialogsList.appendChild(dialogItem);
+                });
+            })
+            .catch(error => {
+                console.error('Ошибка при загрузке диалогов:', error);
+                // Ошибка уже обработана в предыдущих блоках then
+            });
         }
         
         // Функция для загрузки сообщений
