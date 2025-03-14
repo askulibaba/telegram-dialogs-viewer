@@ -272,6 +272,22 @@
                     return;
                 }
                 
+                // Сначала проверяем, авторизован ли пользователь в Telegram
+                const checkResponse = await fetch('/api/v1/dialogs?limit=1', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (checkResponse.status === 401) {
+                    const errorData = await checkResponse.json();
+                    if (errorData.detail.includes("Требуется авторизация в Telegram") || 
+                        errorData.detail.includes("не найдена")) {
+                        alert('Необходимо сначала авторизоваться в Telegram через вкладку "Вход по телефону"');
+                        return;
+                    }
+                }
+                
                 const response = await fetch('/api/v1/dialogs/832190149/messages', {
                     method: 'POST',
                     headers: {
@@ -290,7 +306,16 @@
                 } else {
                     const errorData = await response.json();
                     console.error('Ошибка при отправке сообщения:', errorData);
-                    alert(`Ошибка при отправке сообщения: ${errorData.detail || 'Неизвестная ошибка'}`);
+                    
+                    // Проверяем конкретные ошибки
+                    if (errorData.detail.includes("Сессия для пользователя") && 
+                        errorData.detail.includes("не найдена")) {
+                        alert('Ошибка: Сессия Telegram не найдена. Пожалуйста, авторизуйтесь через вкладку "Вход по телефону"');
+                    } else if (errorData.detail.includes("Требуется авторизация в Telegram")) {
+                        alert('Ошибка: Требуется авторизация в Telegram. Пожалуйста, авторизуйтесь через вкладку "Вход по телефону"');
+                    } else {
+                        alert(`Ошибка при отправке сообщения: ${errorData.detail || 'Неизвестная ошибка'}`);
+                    }
                 }
             } catch (error) {
                 console.error('Ошибка при отправке сообщения:', error);
