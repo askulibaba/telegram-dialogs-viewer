@@ -107,6 +107,13 @@
                 <button id="check-auth-button" class="auth-button">Проверить авторизацию</button>
                 <button id="clear-auth-button" class="auth-button">Очистить авторизацию</button>
             </div>
+            <div class="telegram-sessions-debug">
+                <h3>Отладка сессий Telegram</h3>
+                <div id="sessions-debug-info" class="debug-info">
+                    <p>Нет данных о сессиях</p>
+                </div>
+                <button id="check-sessions-button" class="auth-button">Проверить сессии</button>
+            </div>
             <div class="webhook-controls">
                 <h3>Управление вебхуком</h3>
                 <button id="set-webhook-button" class="auth-button">Установить вебхук</button>
@@ -346,16 +353,27 @@
                 const apiUrl = `${window.location.origin}/api/v1/dialogs${forceRefresh ? '?force_refresh=true' : ''}`;
                 console.log('URL для загрузки диалогов:', apiUrl);
                 
+                // Добавляем отладочную информацию в консоль
+                console.log('Детали запроса диалогов:');
+                console.log('- URL:', apiUrl);
+                console.log('- Метод: GET');
+                console.log('- Заголовки:', { 'Authorization': `Bearer ${token.substring(0, 10)}...` });
+                console.log('- Force Refresh:', forceRefresh);
+                
                 const response = await fetch(apiUrl, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
                 });
                 
-                console.log('Ответ от сервера при загрузке диалогов:', response);
+                console.log('Ответ от сервера при загрузке диалогов:');
+                console.log('- Статус:', response.status);
+                console.log('- Статус текст:', response.statusText);
+                console.log('- Заголовки:', Object.fromEntries([...response.headers.entries()]));
                 
                 if (!response.ok) {
                     const errorData = await response.json();
+                    console.error('Ошибка при загрузке диалогов (детали):', errorData);
                     const errorDetail = errorData.detail || `Ошибка при загрузке диалогов: ${response.status} ${response.statusText}`;
                     
                     // Обрабатываем специальные ошибки
@@ -365,13 +383,60 @@
                     } else if (response.status === 403 && errorDetail.includes('заблокирован')) {
                         // Аккаунт заблокирован
                         throw new Error(`Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.`);
+                    } else if (response.status === 401 && (errorDetail.includes('Требуется авторизация в Telegram') || 
+                               errorDetail.includes('Сессия для пользователя') && errorDetail.includes('не найдена'))) {
+                        // Проблема с сессией Telegram
+                        const errorMsg = 'Требуется авторизация в Telegram. Пожалуйста, авторизуйтесь через вкладку "Вход по телефону".';
+                        errorMessage.textContent = errorMsg;
+                        errorMessage.style.display = 'block';
+                        
+                        // Добавляем кнопку для перехода к авторизации по телефону
+                        const authButton = document.createElement('button');
+                        authButton.className = 'auth-button';
+                        authButton.textContent = 'Авторизоваться по телефону';
+                        authButton.addEventListener('click', function() {
+                            // Переключаемся на вкладку авторизации по телефону
+                            document.querySelector('.auth-tab-button[data-tab="phone-tab"]').click();
+                            document.getElementById('auth-section').style.display = 'block';
+                            document.getElementById('dialogs-section').style.display = 'none';
+                        });
+                        errorMessage.appendChild(document.createElement('br'));
+                        errorMessage.appendChild(authButton);
+                        
+                        loading.style.display = 'none';
+                        return;
                     } else {
                         throw new Error(errorDetail);
                     }
                 }
                 
                 const data = await response.json();
-                console.log('Полученные диалоги:', data);
+                console.log('Полученные диалоги (детали):', data);
+                console.log('Количество диалогов:', data.length);
+                
+                // Проверяем, есть ли в ответе тестовые диалоги
+                const isMockData = data.some(dialog => 
+                    dialog.title && (dialog.title.includes('Тестовый диалог') || dialog.title.includes('Случайный диалог'))
+                );
+                
+                if (isMockData) {
+                    console.warn('ВНИМАНИЕ: Получены тестовые диалоги вместо реальных!');
+                    
+                    // Добавляем предупреждение в интерфейс
+                    const warningElement = document.createElement('div');
+                    warningElement.className = 'warning-message';
+                    warningElement.innerHTML = `
+                        <strong>Внимание!</strong> Отображаются тестовые диалоги вместо реальных.
+                        Возможные причины:
+                        <ul>
+                            <li>Отсутствует сессия Telegram</li>
+                            <li>Проблема с авторизацией в Telegram</li>
+                            <li>Ошибка при получении реальных диалогов</li>
+                        </ul>
+                        Попробуйте авторизоваться через вкладку "Вход по телефону".
+                    `;
+                    dialogsList.appendChild(warningElement);
+                }
                 
                 if (data.length === 0) {
                     dialogsList.innerHTML = '<p>У вас нет диалогов</p>';
@@ -388,6 +453,7 @@
                             </div>
                             <div class="dialog-last-message">${dialog.last_message || 'Нет сообщений'}</div>
                             <div class="dialog-time">${dialog.last_message_date || ''}</div>
+                            <div class="dialog-debug">ID: ${dialog.id}, Тип: ${dialog.type || 'неизвестно'}</div>
                         `;
                         
                         // Добавляем обработчик клика для перехода к сообщениям
@@ -419,6 +485,7 @@
                 retryButton.addEventListener('click', function() {
                     loadDialogs(true);
                 });
+                errorMessage.appendChild(document.createElement('br'));
                 errorMessage.appendChild(retryButton);
             } finally {
                 loading.style.display = 'none';
@@ -799,6 +866,14 @@
                 });
             }
             
+            // Обработчик для проверки сессий Telegram
+            const checkSessionsButton = document.getElementById('check-sessions-button');
+            if (checkSessionsButton) {
+                checkSessionsButton.addEventListener('click', function() {
+                    checkTelegramSessions();
+                });
+            }
+            
             // Инициализируем вкладки авторизации
             initAuthTabs();
             
@@ -1055,6 +1130,168 @@
                 alert('Ошибка при отправке данных на сервер: ' + error.message);
             });
         };
+        
+        // Функция для проверки сессий Telegram
+        async function checkTelegramSessions() {
+            const sessionsDebugInfo = document.getElementById('sessions-debug-info');
+            if (!sessionsDebugInfo) return;
+            
+            try {
+                sessionsDebugInfo.innerHTML = '<p>Загрузка информации о сессиях...</p>';
+                
+                const token = localStorage.getItem('access_token');
+                if (!token) {
+                    sessionsDebugInfo.innerHTML = '<p>Необходимо авторизоваться для проверки сессий</p>';
+                    return;
+                }
+                
+                // Запрашиваем информацию о сессиях
+                const response = await fetch('/api/v1/auth/sessions', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        // Если эндпоинт не существует, пробуем получить информацию другим способом
+                        await checkSessionsAlternative(sessionsDebugInfo);
+                        return;
+                    }
+                    
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `Ошибка при получении информации о сессиях: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Отображаем информацию о сессиях
+                sessionsDebugInfo.innerHTML = `
+                    <h4>Информация о сессиях Telegram:</h4>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                console.error('Ошибка при проверке сессий:', error);
+                sessionsDebugInfo.innerHTML = `
+                    <h4>Ошибка при проверке сессий:</h4>
+                    <pre>${error.message}</pre>
+                    <p>Попробуйте альтернативный метод проверки:</p>
+                `;
+                
+                // Добавляем кнопку для альтернативной проверки
+                const alternativeButton = document.createElement('button');
+                alternativeButton.className = 'auth-button';
+                alternativeButton.textContent = 'Проверить альтернативным способом';
+                alternativeButton.addEventListener('click', function() {
+                    checkSessionsAlternative(sessionsDebugInfo);
+                });
+                sessionsDebugInfo.appendChild(alternativeButton);
+            }
+        }
+        
+        // Альтернативный метод проверки сессий
+        async function checkSessionsAlternative(sessionsDebugInfo) {
+            try {
+                sessionsDebugInfo.innerHTML = '<p>Проверка сессий альтернативным способом...</p>';
+                
+                const token = localStorage.getItem('access_token');
+                if (!token) {
+                    sessionsDebugInfo.innerHTML = '<p>Необходимо авторизоваться для проверки сессий</p>';
+                    return;
+                }
+                
+                // Пробуем получить диалоги с минимальным лимитом
+                const response = await fetch('/api/v1/dialogs?limit=1', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const responseData = await response.json();
+                
+                // Проверяем, есть ли в ответе тестовые диалоги
+                const isMockData = response.ok && responseData.some(dialog => 
+                    dialog.title && (dialog.title.includes('Тестовый диалог') || dialog.title.includes('Случайный диалог'))
+                );
+                
+                let sessionStatus = 'Неизвестно';
+                let sessionDetails = '';
+                
+                if (!response.ok) {
+                    if (responseData.detail && responseData.detail.includes('Сессия для пользователя') && 
+                        responseData.detail.includes('не найдена')) {
+                        sessionStatus = 'Отсутствует';
+                        sessionDetails = responseData.detail;
+                    } else if (responseData.detail && responseData.detail.includes('Требуется авторизация в Telegram')) {
+                        sessionStatus = 'Требуется авторизация';
+                        sessionDetails = responseData.detail;
+                    } else {
+                        sessionStatus = 'Ошибка';
+                        sessionDetails = responseData.detail || `Ошибка ${response.status}: ${response.statusText}`;
+                    }
+                } else if (isMockData) {
+                    sessionStatus = 'Возможно отсутствует';
+                    sessionDetails = 'Возвращаются тестовые диалоги вместо реальных';
+                } else {
+                    sessionStatus = 'Активна';
+                    sessionDetails = 'Сессия работает корректно';
+                }
+                
+                // Получаем информацию о пользователе
+                const user = localStorage.getItem('user');
+                let userData = { id: 'Неизвестно' };
+                
+                if (user) {
+                    try {
+                        userData = JSON.parse(user);
+                    } catch (e) {
+                        console.error('Ошибка при парсинге данных пользователя:', e);
+                    }
+                }
+                
+                // Отображаем информацию о сессии
+                sessionsDebugInfo.innerHTML = `
+                    <h4>Статус сессии Telegram:</h4>
+                    <p><strong>Статус:</strong> ${sessionStatus}</p>
+                    <p><strong>Детали:</strong> ${sessionDetails}</p>
+                    <p><strong>ID пользователя:</strong> ${userData.id}</p>
+                    <p><strong>Ожидаемый путь к файлу сессии:</strong> /app/backend/app/sessions/user_${userData.id}.session</p>
+                    <p><strong>Код ответа API:</strong> ${response.status} ${response.statusText}</p>
+                    <pre>${JSON.stringify(responseData, null, 2)}</pre>
+                `;
+                
+                // Добавляем рекомендации
+                if (sessionStatus !== 'Активна') {
+                    const recommendations = document.createElement('div');
+                    recommendations.innerHTML = `
+                        <h4>Рекомендации:</h4>
+                        <ol>
+                            <li>Авторизуйтесь через вкладку "Вход по телефону"</li>
+                            <li>Убедитесь, что вы ввели правильный номер телефона и код подтверждения</li>
+                            <li>Проверьте права доступа к директории сессий на сервере</li>
+                            <li>Проверьте логи сервера на наличие ошибок при создании сессии</li>
+                        </ol>
+                    `;
+                    sessionsDebugInfo.appendChild(recommendations);
+                    
+                    // Добавляем кнопку для перехода к авторизации по телефону
+                    const authButton = document.createElement('button');
+                    authButton.className = 'auth-button';
+                    authButton.textContent = 'Авторизоваться по телефону';
+                    authButton.addEventListener('click', function() {
+                        // Переключаемся на вкладку авторизации по телефону
+                        document.querySelector('.auth-tab-button[data-tab="phone-tab"]').click();
+                    });
+                    sessionsDebugInfo.appendChild(authButton);
+                }
+            } catch (error) {
+                console.error('Ошибка при альтернативной проверке сессий:', error);
+                sessionsDebugInfo.innerHTML = `
+                    <h4>Ошибка при альтернативной проверке сессий:</h4>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
     </script>
 
     <script src="/static/js/app.js"></script>
