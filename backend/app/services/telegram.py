@@ -142,6 +142,7 @@ async def get_client(user_id: int) -> TelegramClient:
     # Создаем путь к файлу сессии
     session_file = os.path.join(settings.SESSIONS_DIR, f"user_{user_id}")
     logger.info(f"Путь к файлу сессии: {session_file}")
+    logger.info(f"Полный путь к директории сессий: {os.path.abspath(settings.SESSIONS_DIR)}")
     
     # Проверяем существование файла сессии
     if not os.path.exists(f"{session_file}.session"):
@@ -288,6 +289,8 @@ async def send_code_request(phone_number: str) -> Dict[str, Any]:
         
         # Создаем путь к файлу сессии
         session_file = os.path.join(settings.SESSIONS_DIR, f"temp_user_{temp_user_id}")
+        logger.info(f"Путь к временному файлу сессии: {session_file}")
+        logger.info(f"Директория сессий существует: {os.path.exists(settings.SESSIONS_DIR)}")
         
         # Создаем клиент
         client = TelegramClient(
@@ -596,10 +599,9 @@ async def get_dialogs(user_id: int, force_refresh: bool = False) -> List[Dict[st
         logger.error(f"Ошибка при получении диалогов для пользователя {user_id}: {e}")
         
         # Собираем подробную информацию об ошибке
-        session_file = f"app/sessions/user_{user_id}.session"
+        session_file = os.path.join(settings.SESSIONS_DIR, f"user_{user_id}.session")
         session_exists = os.path.exists(session_file)
-        sessions_dir = "app/sessions"
-        sessions_list = os.listdir(sessions_dir) if os.path.exists(sessions_dir) else []
+        sessions_list = os.listdir(settings.SESSIONS_DIR) if os.path.exists(settings.SESSIONS_DIR) else []
         
         error_message = f"Ошибка при получении диалогов: {str(e)}. "
         error_message += f"Пользователь: {user_id}. "
@@ -774,10 +776,9 @@ async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id:
         logger.error(f"Ошибка при получении сообщений: {str(e)}")
         
         # Собираем подробную информацию об ошибке
-        session_file = f"app/sessions/user_{user_id}.session"
+        session_file = os.path.join(settings.SESSIONS_DIR, f"user_{user_id}.session")
         session_exists = os.path.exists(session_file)
-        sessions_dir = "app/sessions"
-        sessions_list = os.listdir(sessions_dir) if os.path.exists(sessions_dir) else []
+        sessions_list = os.listdir(settings.SESSIONS_DIR) if os.path.exists(settings.SESSIONS_DIR) else []
         
         error_message = f"Ошибка при получении сообщений: {str(e)}. "
         error_message += f"Пользователь: {user_id}. "

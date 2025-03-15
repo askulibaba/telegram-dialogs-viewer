@@ -67,6 +67,11 @@ class Settings(BaseSettings):
 # Создаем экземпляр настроек
 settings = Settings()
 
+# Логируем информацию о путях к сессиям
+import logging
+logger = logging.getLogger(__name__)
+logger.info(f"Базовый путь к директории сессий: {settings.SESSIONS_DIR}")
+
 # Если приложение запущено на Railway и есть подключенный volume
 if settings.IS_RAILWAY and settings.RAILWAY_VOLUME_MOUNT_PATH:
     # Используем путь к volume для хранения сессий
@@ -77,9 +82,11 @@ if settings.IS_RAILWAY and settings.RAILWAY_VOLUME_MOUNT_PATH:
     os.makedirs(sessions_path, exist_ok=True)
     
     # Логируем информацию о настройках
-    import logging
-    logger = logging.getLogger(__name__)
     logger.info(f"Приложение запущено на Railway с подключенным volume")
     logger.info(f"Имя volume: {settings.RAILWAY_VOLUME_NAME}")
     logger.info(f"Путь монтирования volume: {settings.RAILWAY_VOLUME_MOUNT_PATH}")
-    logger.info(f"Путь к директории сессий: {settings.SESSIONS_DIR}") 
+    logger.info(f"Новый путь к директории сессий: {settings.SESSIONS_DIR}")
+else:
+    logger.info(f"Приложение запущено без Railway Volume, используется стандартный путь к сессиям")
+    # Создаем директорию, если она не существует
+    os.makedirs(settings.SESSIONS_DIR, exist_ok=True) 
