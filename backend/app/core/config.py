@@ -41,9 +41,10 @@ class Settings(BaseSettings):
     # Настройки Telegram
     TELEGRAM_API_ID: int
     TELEGRAM_API_HASH: str
+    TELEGRAM_API_URL: str = "https://api.telegram.org/bot"
     
     # Настройки бота
-    BOT_TOKEN: str = ""
+    TELEGRAM_BOT_TOKEN: str = ""
     
     # Настройки JWT
     JWT_SECRET_KEY: str = "your-secret-key"
