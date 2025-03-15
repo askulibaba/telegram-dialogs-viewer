@@ -538,6 +538,38 @@ async def sign_in(
         raise
 
 
+async def sign_in_2fa(
+    temp_user_id: int,
+    phone_number: str,
+    code: str,
+    phone_code_hash: str,
+    password: str
+) -> Dict[str, Any]:
+    """
+    Авторизация по коду подтверждения с двухфакторной аутентификацией
+    
+    Args:
+        temp_user_id: Временный ID пользователя
+        phone_number: Номер телефона
+        code: Код подтверждения
+        phone_code_hash: Хеш кода подтверждения
+        password: Пароль для двухфакторной аутентификации
+    
+    Returns:
+        Dict[str, Any]: Данные пользователя
+    """
+    logger.info(f"Авторизация с 2FA для номера {phone_number}")
+    
+    # Используем существующую функцию sign_in с паролем
+    return await sign_in(
+        temp_user_id=temp_user_id,
+        phone_number=phone_number,
+        code=code,
+        phone_code_hash=phone_code_hash,
+        password=password
+    )
+
+
 async def get_dialogs(user_id: int, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Получает список диалогов пользователя
