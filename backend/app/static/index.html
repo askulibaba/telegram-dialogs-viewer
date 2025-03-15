@@ -152,6 +152,28 @@
     </footer>
 
     <script>
+        // Функция для отображения формы авторизации
+        function showLoginForm() {
+            document.getElementById('auth-section').style.display = 'block';
+            document.getElementById('dialogs-section').style.display = 'none';
+            
+            // Очищаем информацию о пользователе
+            const userInfo = document.getElementById('user-info');
+            if (userInfo) {
+                userInfo.style.display = 'none';
+            }
+        }
+        
+        // Функция для отображения формы авторизации Telegram
+        function showTelegramAuthForm() {
+            const phoneTab = document.querySelector('.auth-tab-button[data-tab="phone-tab"]');
+            if (phoneTab) {
+                phoneTab.click();
+            }
+            document.getElementById('auth-section').style.display = 'block';
+            document.getElementById('dialogs-section').style.display = 'none';
+        }
+        
         // Функция для загрузки информации о боте
         async function loadBotInfo() {
             try {
@@ -337,7 +359,10 @@
         
         // Функция для загрузки диалогов
         function loadDialogs(forceRefresh = false) {
-            const token = localStorage.getItem('token');
+            // Проверяем наличие токена в localStorage
+            // Сначала проверяем новый формат токена, затем старый
+            const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+            
             if (!token) {
                 showLoginForm();
                 return;
@@ -1317,6 +1342,81 @@
                     <pre>${error.message}</pre>
                 `;
             }
+        }
+
+        // Функция для проверки авторизации
+        async function checkAuth() {
+            const authDebugInfo = document.getElementById('auth-debug-info');
+            if (!authDebugInfo) return;
+            
+            // Получаем токены из localStorage
+            const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+            const userData = localStorage.getItem('user');
+            
+            let userObj = null;
+            try {
+                if (userData) {
+                    userObj = JSON.parse(userData);
+                }
+            } catch (e) {
+                console.error('Ошибка при парсинге данных пользователя:', e);
+            }
+            
+            // Формируем отладочную информацию
+            let debugHtml = '<h4>Информация об авторизации:</h4>';
+            
+            if (token) {
+                debugHtml += `
+                    <p><strong>Токен:</strong> ${token.substring(0, 10)}...</p>
+                `;
+                
+                if (userObj) {
+                    debugHtml += `
+                        <p><strong>Данные пользователя:</strong></p>
+                        <pre>${JSON.stringify(userObj, null, 2)}</pre>
+                    `;
+                } else {
+                    debugHtml += '<p><strong>Данные пользователя:</strong> Отсутствуют</p>';
+                }
+                
+                // Проверяем токен на сервере
+                try {
+                    const response = await fetch('/api/auth/check', {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        debugHtml += `
+                            <p><strong>Статус токена:</strong> Действителен</p>
+                            <p><strong>Данные с сервера:</strong></p>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        `;
+                    } else {
+                        debugHtml += `
+                            <p><strong>Статус токена:</strong> Недействителен</p>
+                            <p><strong>Код ошибки:</strong> ${response.status}</p>
+                        `;
+                    }
+                } catch (e) {
+                    debugHtml += `
+                        <p><strong>Ошибка при проверке токена:</strong> ${e.message}</p>
+                    `;
+                }
+            } else {
+                debugHtml += '<p>Пользователь не авторизован</p>';
+            }
+            
+            // Добавляем информацию о текущем URL
+            debugHtml += `
+                <p><strong>Текущий URL:</strong> ${window.location.href}</p>
+                <p><strong>Origin:</strong> ${window.location.origin}</p>
+                <p><strong>API URL:</strong> ${window.location.origin}/api</p>
+            `;
+            
+            authDebugInfo.innerHTML = debugHtml;
         }
     </script>
 
