@@ -613,10 +613,10 @@ async def get_dialogs(user_id: int, force_refresh: bool = False) -> List[Dict[st
             # Добавляем фото профиля, если оно есть
             try:
                 if hasattr(dialog, 'entity') and dialog.entity:
-                    entity = dialog.entity
-                    if hasattr(entity, 'photo') and entity.photo:
-                        # Здесь можно добавить логику для получения URL фото
-                        pass
+                    # Получаем аватар диалога
+                    photo_url = await get_dialog_photo(client, dialog)
+                    if photo_url:
+                        dialog_dict["photo"] = photo_url
             except Exception as e:
                 logger.warning(f"Ошибка при получении фото для диалога {dialog.id}: {e}")
             
@@ -712,7 +712,7 @@ async def get_test_dialogs(user_id: str) -> List[Dict[str, Any]]:
     return dialogs
 
 
-async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id: int = 0, force_refresh: bool = False) -> List[Dict[str, Any]]:
+async def get_messages(user_id: int, dialog_id: str, limit: int = 50, offset: int = 0, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Получает сообщения из диалога
     
@@ -720,105 +720,137 @@ async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id:
         user_id: ID пользователя
         dialog_id: ID диалога
         limit: Максимальное количество сообщений
-        offset_id: ID сообщения, с которого начинать
-        force_refresh: Принудительно обновить кэш
+        offset: Смещение (для пагинации)
+        force_refresh: Принудительное обновление кэша
         
     Returns:
         List[Dict[str, Any]]: Список сообщений
     """
-    logger.info(f"Получение сообщений из диалога {dialog_id} для пользователя {user_id}")
-    
     # Создаем ключ для кэша
-    cache_key = (user_id, dialog_id)
+    cache_key = (user_id, dialog_id, limit, offset)
     
-    # Проверяем кэш, если не требуется принудительное обновление и нет смещения
-    if not force_refresh and offset_id == 0 and cache_key in messages_cache:
+    # Проверяем кэш, если не требуется принудительное обновление
+    if not force_refresh and cache_key in messages_cache:
         cached_messages, timestamp = messages_cache[cache_key]
-        elapsed = time.time() - timestamp
-        
-        if elapsed < CACHE_TTL:
-            logger.info(f"Возвращаем кэшированные сообщения для диалога {dialog_id} (возраст: {elapsed:.2f} сек)")
+        # Если кэш не устарел, возвращаем его
+        if time.time() - timestamp < CACHE_TTL:
+            logger.info(f"Возвращаем кэшированные сообщения для пользователя {user_id} и диалога {dialog_id}")
             return cached_messages
         else:
-            logger.info(f"Кэш сообщений устарел для диалога {dialog_id} (возраст: {elapsed:.2f} сек)")
+            logger.info(f"Кэш сообщений для пользователя {user_id} и диалога {dialog_id} устарел")
     
     try:
-        # Получаем клиент
+        # Получаем клиент Telegram
         client = await get_client(user_id)
         
-        # Подключаемся к Telegram, если не подключены
-        if not client.is_connected():
-            await client.connect()
-        
-        # Соблюдаем ограничения на частоту запросов
+        # Ждем ограничения запросов
         await wait_for_request_limit(user_id)
         
-        # Получаем сообщения
-        try:
-            messages = await client.get_messages(
-                dialog_id,
-                limit=limit,
-                offset_id=offset_id
-            )
-        except FloodWaitError as e:
-            # Если превышен лимит запросов, сообщаем пользователю, сколько нужно подождать
-            logger.error(f"Превышен лимит запросов к API Telegram: {str(e)}")
-            raise ValueError(f"Превышен лимит запросов к API Telegram. Пожалуйста, подождите {e.seconds} секунд и попробуйте снова.")
-        except UserDeactivatedBanError:
-            logger.error(f"Аккаунт заблокирован Telegram")
-            raise ValueError("Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.")
-        except Exception as e:
-            logger.error(f"Ошибка при получении сообщений: {str(e)}")
-            raise ValueError(f"Ошибка при получении сообщений: {str(e)}")
+        # Получаем сущность диалога
+        logger.info(f"Получаем сущность диалога {dialog_id} для пользователя {user_id}")
+        entity = await client.get_entity(int(dialog_id))
         
-        # Форматируем результат
+        # Получаем сообщения
+        logger.info(f"Получаем сообщения для диалога {dialog_id} (лимит: {limit}, смещение: {offset})")
+        messages = await client.get_messages(entity, limit=limit, offset_id=offset)
+        
+        # Преобразуем сообщения в список словарей
         result = []
         for message in messages:
-            # Получаем информацию об отправителе
-            sender_name = "Неизвестный"
-            is_outgoing = message.out
-            
-            if is_outgoing:
-                sender_name = "Вы"
-            elif message.sender:
-                if hasattr(message.sender, "first_name"):
-                    sender_name = message.sender.first_name
-                    if hasattr(message.sender, "last_name") and message.sender.last_name:
-                        sender_name += f" {message.sender.last_name}"
-                elif hasattr(message.sender, "title"):
-                    sender_name = message.sender.title
-            
-            # Добавляем сообщение в результат
-            result.append({
+            # Базовая информация о сообщении
+            message_dict = {
                 "id": message.id,
-                "text": message.message,
-                "date": message.date.isoformat(),
-                "is_outgoing": is_outgoing,
-                "sender": sender_name,
-                "reply_to_msg_id": message.reply_to_msg_id
-            })
+                "text": message.text if hasattr(message, 'text') else "",
+                "date": message.date.isoformat() if hasattr(message, 'date') else None,
+                "out": message.out if hasattr(message, 'out') else False,
+                "mentioned": message.mentioned if hasattr(message, 'mentioned') else False,
+                "media_unread": message.media_unread if hasattr(message, 'media_unread') else False,
+                "silent": message.silent if hasattr(message, 'silent') else False,
+                "post": message.post if hasattr(message, 'post') else False,
+                "from_scheduled": message.from_scheduled if hasattr(message, 'from_scheduled') else False,
+                "legacy": message.legacy if hasattr(message, 'legacy') else False,
+                "edit_hide": message.edit_hide if hasattr(message, 'edit_hide') else False,
+                "pinned": message.pinned if hasattr(message, 'pinned') else False,
+                "noforwards": message.noforwards if hasattr(message, 'noforwards') else False,
+            }
+            
+            # Информация об отправителе
+            if hasattr(message, 'sender') and message.sender:
+                sender = message.sender
+                sender_dict = {
+                    "id": sender.id if hasattr(sender, 'id') else None,
+                    "first_name": sender.first_name if hasattr(sender, 'first_name') else None,
+                    "last_name": sender.last_name if hasattr(sender, 'last_name') else None,
+                    "username": sender.username if hasattr(sender, 'username') else None,
+                    "phone": sender.phone if hasattr(sender, 'phone') else None,
+                    "bot": sender.bot if hasattr(sender, 'bot') else False,
+                }
+                
+                # Получаем аватар отправителя
+                try:
+                    sender_dict["photo"] = await get_profile_photo(client, sender)
+                except Exception as e:
+                    logger.warning(f"Ошибка при получении аватара отправителя: {e}")
+                
+                message_dict["sender"] = sender_dict
+            
+            # Информация о медиа
+            if hasattr(message, 'media') and message.media:
+                media = message.media
+                media_dict = {
+                    "type": str(type(media).__name__),
+                }
+                
+                # Обрабатываем разные типы медиа
+                if hasattr(media, 'photo') and media.photo:
+                    media_dict["photo"] = True
+                    # Можно добавить логику для получения URL фото
+                
+                if hasattr(media, 'document') and media.document:
+                    media_dict["document"] = True
+                    # Можно добавить логику для получения информации о документе
+                
+                message_dict["media"] = media_dict
+            
+            # Информация о пересланном сообщении
+            if hasattr(message, 'forward') and message.forward:
+                forward = message.forward
+                forward_dict = {
+                    "date": forward.date.isoformat() if hasattr(forward, 'date') else None,
+                }
+                
+                if hasattr(forward, 'from_id') and forward.from_id:
+                    forward_dict["from_id"] = str(forward.from_id)
+                
+                if hasattr(forward, 'from_name') and forward.from_name:
+                    forward_dict["from_name"] = forward.from_name
+                
+                message_dict["forward"] = forward_dict
+            
+            # Информация о реакциях
+            if hasattr(message, 'reactions') and message.reactions:
+                reactions = message.reactions
+                reactions_list = []
+                
+                if hasattr(reactions, 'results') and reactions.results:
+                    for reaction in reactions.results:
+                        reaction_dict = {
+                            "emoticon": reaction.emoticon if hasattr(reaction, 'emoticon') else None,
+                            "count": reaction.count if hasattr(reaction, 'count') else 0,
+                        }
+                        reactions_list.append(reaction_dict)
+                
+                message_dict["reactions"] = reactions_list
+            
+            result.append(message_dict)
         
-        # Сохраняем результат в кэш, только если нет смещения
-        if offset_id == 0:
-            messages_cache[cache_key] = (result, time.time())
-            logger.info(f"Обновлен кэш сообщений для диалога {dialog_id}")
+        # Сохраняем результат в кэш
+        messages_cache[cache_key] = (result, time.time())
         
+        logger.info(f"Получено {len(result)} сообщений для диалога {dialog_id}")
         return result
     except Exception as e:
-        logger.error(f"Ошибка при получении сообщений: {str(e)}")
-        
-        # Собираем подробную информацию об ошибке
-        session_file = os.path.join(settings.SESSIONS_DIR, f"user_{user_id}.session")
-        session_exists = os.path.exists(session_file)
-        sessions_list = os.listdir(settings.SESSIONS_DIR) if os.path.exists(settings.SESSIONS_DIR) else []
-        
-        error_message = f"Ошибка при получении сообщений: {str(e)}. "
-        error_message += f"Пользователь: {user_id}. "
-        error_message += f"Диалог: {dialog_id}. "
-        error_message += f"Время: {datetime.now().isoformat()}. "
-        error_message += f"Сессия: {session_file}. "
-        error_message += f"Сессия существует: {session_exists}. "
-        error_message += f"Содержимое директории сессий: {', '.join(sessions_list)}."
+        logger.error(f"Ошибка при получении сообщений для диалога {dialog_id}: {e}")
         
         # Проверяем тип ошибки
         if "FloodWaitError" in str(e):
@@ -831,7 +863,7 @@ async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id:
             raise ValueError(f"Требуется пароль двухфакторной аутентификации: {str(e)}")
         else:
             # Выбрасываем исключение с подробной информацией
-            raise ValueError(error_message)
+            raise ValueError(f"Ошибка при получении сообщений: {str(e)}")
 
 
 async def get_test_messages(dialog_id: str, user_id: str) -> List[Dict[str, Any]]:
@@ -994,4 +1026,79 @@ async def get_session_info(user_id: int) -> Dict[str, Any]:
     }
     
     logger.info(f"Информация о сессии: {session_info}")
-    return session_info 
+    return session_info
+
+
+async def get_profile_photo(client, entity) -> Optional[str]:
+    """
+    Получает URL аватара профиля
+    
+    Args:
+        client: Клиент Telegram
+        entity: Сущность (пользователь, чат, канал)
+        
+    Returns:
+        Optional[str]: URL аватара или None, если аватар отсутствует
+    """
+    try:
+        # Проверяем, есть ли у сущности фото профиля
+        if not hasattr(entity, 'photo') or not entity.photo:
+            return None
+        
+        # Получаем фото профиля
+        photos = await client.get_profile_photos(entity)
+        if not photos or len(photos) == 0:
+            return None
+        
+        # Берем первое (самое новое) фото
+        photo = photos[0]
+        
+        # Получаем размер фото (предпочитаем маленький размер для аватаров)
+        smallest_size = None
+        for size in photo.sizes:
+            if smallest_size is None or (hasattr(size, 'size') and size.size < smallest_size.size):
+                smallest_size = size
+        
+        if not smallest_size:
+            return None
+        
+        # Скачиваем фото
+        photo_data = await client.download_media(photo, bytes)
+        
+        # Кодируем фото в base64 для отображения в браузере
+        import base64
+        photo_base64 = base64.b64encode(photo_data).decode('utf-8')
+        
+        # Определяем MIME-тип (обычно image/jpeg для фото профиля)
+        mime_type = "image/jpeg"
+        
+        # Формируем data URL
+        data_url = f"data:{mime_type};base64,{photo_base64}"
+        
+        return data_url
+    except Exception as e:
+        logger.warning(f"Ошибка при получении аватара: {e}")
+        return None
+
+
+async def get_dialog_photo(client, dialog) -> Optional[str]:
+    """
+    Получает URL аватара диалога
+    
+    Args:
+        client: Клиент Telegram
+        dialog: Диалог
+        
+    Returns:
+        Optional[str]: URL аватара или None, если аватар отсутствует
+    """
+    try:
+        # Проверяем, есть ли у диалога сущность
+        if not hasattr(dialog, 'entity') or not dialog.entity:
+            return None
+        
+        # Получаем аватар сущности
+        return await get_profile_photo(client, dialog.entity)
+    except Exception as e:
+        logger.warning(f"Ошибка при получении аватара диалога: {e}")
+        return None 

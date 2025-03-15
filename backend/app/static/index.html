@@ -92,11 +92,29 @@
             </div>
         </section>
 
-        <section id="dialogs-section" class="dialogs-section" style="display: none;">
+        <section id="dialogs-section" class="dialogs-section">
             <h2>Ваши диалоги</h2>
             <div id="error-message" class="error-message" style="display: none;"></div>
             <div id="loading" class="loading">Загрузка диалогов...</div>
             <div id="dialogs-list" class="dialog-list"></div>
+        </section>
+
+        <section id="messages-section" class="messages-section">
+            <div class="messages-header">
+                <button id="back-to-dialogs" class="back-button">← Назад к диалогам</button>
+                <h2 id="current-dialog-header">Диалог</h2>
+            </div>
+            <div id="messages-list" class="messages-list">
+                <div class="loading">Загрузка сообщений...</div>
+            </div>
+            <div class="message-input-container">
+                <input type="text" id="message-input" class="message-input" placeholder="Введите сообщение...">
+                <button id="send-message" class="send-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855a.5.5 0 0 0-.042.971l4.988 1.687 1.687 4.988a.5.5 0 0 0 .971-.042l5.818-14.316z"/>
+                    </svg>
+                </button>
+            </div>
         </section>
 
         <section id="debug-section" class="debug-section">
@@ -544,11 +562,212 @@
         }
         
         // Функция для загрузки сообщений
-        async function loadMessages(dialogId, forceRefresh = false) {
-            // Реализация загрузки сообщений
-            console.log(`Загрузка сообщений для диалога ${dialogId}, forceRefresh=${forceRefresh}`);
+        async function loadMessages(dialogId, dialogTitle) {
+            // Сохраняем ID текущего диалога
+            currentDialogId = dialogId;
             
-            // Здесь должен быть код для загрузки и отображения сообщений
+            console.log(`Загрузка сообщений для диалога ${dialogId}, название: ${dialogTitle}`);
+            
+            // Проверяем наличие токена в localStorage
+            const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+            
+            if (!token) {
+                showLoginForm();
+                return;
+            }
+            
+            // Показываем интерфейс сообщений
+            document.getElementById('dialogs-section').style.display = 'none';
+            const messagesSection = document.getElementById('messages-section');
+            messagesSection.style.display = 'block';
+            
+            // Устанавливаем заголовок диалога
+            const dialogHeader = document.getElementById('current-dialog-header');
+            dialogHeader.textContent = dialogTitle;
+            
+            // Очищаем список сообщений и показываем индикатор загрузки
+            const messagesList = document.getElementById('messages-list');
+            messagesList.innerHTML = '<div class="loading">Загрузка сообщений...</div>';
+            
+            try {
+                // Формируем URL с параметрами
+                const url = `/api/v1/messages/${dialogId}?limit=50&offset=0`;
+                
+                console.log(`Загрузка сообщений с URL: ${url}`);
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                console.log(`Статус ответа: ${response.status}`);
+                
+                if (response.status === 401) {
+                    // Если требуется авторизация в Telegram
+                    const data = await response.json();
+                    console.log('Ошибка авторизации:', data);
+                    
+                    // Проверяем, есть ли подробная информация о сессии
+                    if (data.detail && typeof data.detail === 'object' && data.detail.session_info) {
+                        const sessionInfo = data.detail.session_info;
+                        console.log('Информация о сессии:', sessionInfo);
+                        
+                        // Отображаем подробную информацию об ошибке
+                        messagesList.innerHTML = `
+                            <div class="error-message">
+                                <h3>Требуется авторизация в Telegram</h3>
+                                <p>${data.detail.error || 'Сессия не найдена'}</p>
+                                <div class="debug-info">
+                                    <h4>Отладочная информация:</h4>
+                                    <ul>
+                                        <li>ID пользователя: ${sessionInfo.user_id}</li>
+                                        <li>Путь к сессии: ${sessionInfo.session_path}</li>
+                                        <li>Сессия существует: ${sessionInfo.session_exists ? 'Да' : 'Нет'}</li>
+                                        <li>Директория сессий существует: ${sessionInfo.sessions_dir_exists ? 'Да' : 'Нет'}</li>
+                                        <li>Список сессий: ${sessionInfo.sessions_list.length > 0 ? sessionInfo.sessions_list.join(', ') : 'Пусто'}</li>
+                                    </ul>
+                                </div>
+                                <button class="auth-button" onclick="showTelegramAuthForm()">Авторизоваться в Telegram</button>
+                            </div>
+                        `;
+                    } else {
+                        // Стандартное сообщение об авторизации
+                        messagesList.innerHTML = `
+                            <div class="error-message">
+                                <p>Требуется авторизация в Telegram</p>
+                                <button class="auth-button" onclick="showTelegramAuthForm()">Авторизоваться в Telegram</button>
+                            </div>
+                        `;
+                    }
+                    return;
+                } else if (response.status === 429) {
+                    // Если превышен лимит запросов
+                    const data = await response.json();
+                    console.log('Превышен лимит запросов:', data);
+                    messagesList.innerHTML = `
+                        <div class="error-message">
+                            <h3>Превышен лимит запросов к API Telegram</h3>
+                            <p>${data.detail || 'Пожалуйста, подождите некоторое время перед повторной попыткой.'}</p>
+                            <button class="retry-button" onclick="loadMessages('${dialogId}', '${dialogTitle}')">Повторить</button>
+                        </div>
+                    `;
+                    return;
+                } else if (!response.ok) {
+                    // Другие ошибки
+                    const data = await response.json();
+                    console.log('Ошибка при загрузке сообщений:', data);
+                    
+                    // Проверяем, есть ли подробная информация об ошибке
+                    let errorMessage = 'Произошла ошибка при загрузке сообщений.';
+                    let errorDetails = '';
+                    
+                    if (data.detail) {
+                        if (typeof data.detail === 'object') {
+                            errorMessage = data.detail.message || errorMessage;
+                            errorDetails = `<pre>${JSON.stringify(data.detail, null, 2)}</pre>`;
+                        } else {
+                            errorMessage = data.detail;
+                        }
+                    }
+                    
+                    messagesList.innerHTML = `
+                        <div class="error-message">
+                            <h3>Ошибка</h3>
+                            <p>${errorMessage}</p>
+                            ${errorDetails}
+                            <button class="retry-button" onclick="loadMessages('${dialogId}', '${dialogTitle}')">Повторить</button>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const messages = await response.json();
+                console.log(`Получено сообщений: ${messages.length}`);
+                
+                // Очищаем список сообщений
+                messagesList.innerHTML = '';
+                
+                // Создаем контейнер для сообщений
+                const messagesContainer = document.createElement('div');
+                messagesContainer.className = 'messages-container';
+                messagesList.appendChild(messagesContainer);
+                
+                // Если сообщений нет, показываем сообщение
+                if (messages.length === 0) {
+                    const emptyMessage = document.createElement('div');
+                    emptyMessage.className = 'empty-message';
+                    emptyMessage.innerHTML = 'В этом диалоге нет сообщений';
+                    messagesContainer.appendChild(emptyMessage);
+                    return;
+                }
+                
+                // Отображаем сообщения
+                messages.forEach(message => {
+                    const messageItem = document.createElement('div');
+                    messageItem.className = `message-item ${message.out ? 'outgoing' : 'incoming'}`;
+                    
+                    // Создаем контейнер для аватара (только для входящих сообщений)
+                    if (!message.out && message.sender) {
+                        const avatar = document.createElement('div');
+                        avatar.className = 'message-avatar';
+                        
+                        if (message.sender.photo) {
+                            avatar.innerHTML = `<img src="${message.sender.photo}" alt="${message.sender.first_name || 'User'}">`;
+                        } else {
+                            const initials = message.sender.first_name ? message.sender.first_name.charAt(0) : '?';
+                            avatar.innerHTML = `<div class="avatar-placeholder">${initials}</div>`;
+                        }
+                        
+                        messageItem.appendChild(avatar);
+                    }
+                    
+                    // Создаем контейнер для содержимого сообщения
+                    const content = document.createElement('div');
+                    content.className = 'message-content';
+                    
+                    // Добавляем имя отправителя (только для входящих сообщений)
+                    if (!message.out && message.sender) {
+                        const senderName = document.createElement('div');
+                        senderName.className = 'message-sender';
+                        senderName.textContent = message.sender.first_name || 'Unknown';
+                        if (message.sender.last_name) {
+                            senderName.textContent += ` ${message.sender.last_name}`;
+                        }
+                        content.appendChild(senderName);
+                    }
+                    
+                    // Добавляем текст сообщения
+                    const text = document.createElement('div');
+                    text.className = 'message-text';
+                    text.textContent = message.text || '';
+                    content.appendChild(text);
+                    
+                    // Добавляем время сообщения
+                    const time = document.createElement('div');
+                    time.className = 'message-time';
+                    if (message.date) {
+                        const date = new Date(message.date);
+                        time.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    }
+                    content.appendChild(time);
+                    
+                    messageItem.appendChild(content);
+                    messagesContainer.appendChild(messageItem);
+                });
+                
+                // Прокручиваем к последнему сообщению
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            } catch (error) {
+                console.error('Ошибка при загрузке сообщений:', error);
+                messagesList.innerHTML = `
+                    <div class="error-message">
+                        <h3>Ошибка</h3>
+                        <p>${error.message}</p>
+                        <button class="retry-button" onclick="loadMessages('${dialogId}', '${dialogTitle}')">Повторить</button>
+                    </div>
+                `;
+            }
         }
         
         // Функция для выхода из аккаунта
@@ -785,154 +1004,254 @@
             }
         }
         
-        // Инициализация при загрузке страницы
-        document.addEventListener('DOMContentLoaded', async function() {
-            console.log('Страница загружена, начинаем инициализацию...');
-            
-            // Загружаем информацию о боте
-            await loadBotInfo();
-            
-            // Проверяем параметры URL для авторизации
-            const urlParams = new URLSearchParams(window.location.search);
-            const token = urlParams.get('token');
-            const userId = urlParams.get('user_id');
-            
-            console.log('Параметры URL:', { token, userId });
-            
-            if (token && userId) {
-                console.log('Получен токен из URL:', token);
-                // Сохраняем токен в localStorage
-                localStorage.setItem('access_token', token);
-                localStorage.setItem('user', JSON.stringify({
-                    id: userId,
-                    first_name: 'Пользователь',
-                    username: 'user'
-                }));
-                
-                // Очищаем URL от параметров
-                window.history.replaceState({}, document.title, window.location.pathname);
-                
-                // Обновляем интерфейс
-                updateUI(true);
-                
-                // Загружаем диалоги
-                loadDialogs();
-                
-                // Обновляем отладочную информацию
-                updateAuthDebugInfo();
-            } else {
-                // Проверяем авторизацию в localStorage
-                const savedToken = localStorage.getItem('access_token');
-                console.log('Сохраненный токен:', savedToken);
-                
-                if (savedToken) {
-                    updateUI(true);
-                    loadDialogs();
-                    updateAuthDebugInfo();
-                }
-            }
-            
-            // Обработчик для ручной авторизации
-            const manualAuthButton = document.getElementById('manual-auth-button');
-            if (manualAuthButton) {
-                manualAuthButton.addEventListener('click', function() {
-                    const telegramId = document.getElementById('telegram-id').value;
-                    if (telegramId) {
-                        manualAuth(telegramId);
-                    } else {
-                        alert('Пожалуйста, введите Telegram ID');
-                    }
-                });
-            }
-            
-            // Обработчик для выхода
-            const logoutButton = document.getElementById('logout-button');
-            if (logoutButton) {
-                logoutButton.addEventListener('click', logout);
-            }
-            
-            // Обработчики событий для кнопок отладки
-            const checkAuthButton = document.getElementById('check-auth-button');
-            const clearAuthButton = document.getElementById('clear-auth-button');
-            const setWebhookButton = document.getElementById('set-webhook-button');
-            const deleteWebhookButton = document.getElementById('delete-webhook-button');
-            const refreshInfoButton = document.getElementById('refresh-info-button');
-            const sendTestMessageButton = document.getElementById('send-test-message-button');
-            const directAuthButton = document.getElementById('direct-auth-button');
-            const sipayButton = document.getElementById('sipay-button');
-            
-            if (checkAuthButton) {
-                checkAuthButton.addEventListener('click', function() {
-                    updateAuthDebugInfo();
-                });
-            }
-            
-            if (clearAuthButton) {
-                clearAuthButton.addEventListener('click', function() {
-                    localStorage.removeItem('access_token');
-                    localStorage.removeItem('user');
-                    updateAuthDebugInfo();
-                    updateUI(false);
-                });
-            }
-            
-            if (setWebhookButton) {
-                setWebhookButton.addEventListener('click', async function() {
-                    await setWebhook();
-                });
-            }
-            
-            if (deleteWebhookButton) {
-                deleteWebhookButton.addEventListener('click', async function() {
-                    await deleteWebhook();
-                });
-            }
-            
-            if (refreshInfoButton) {
-                refreshInfoButton.addEventListener('click', async function() {
-                    await loadBotInfo();
-                });
-            }
-            
-            if (sendTestMessageButton) {
-                sendTestMessageButton.addEventListener('click', async function() {
-                    const chatId = document.getElementById('test-chat-id').value;
-                    if (chatId) {
-                        await sendTestMessage(chatId);
-                    } else {
-                        alert('Введите ID чата для отправки тестового сообщения');
-                    }
-                });
-            }
-            
-            if (directAuthButton) {
-                directAuthButton.addEventListener('click', async function() {
-                    window.location.href = '/direct-auth';
-                });
-            }
-            
-            if (sipayButton) {
-                sipayButton.addEventListener('click', async function() {
-                    await sendSipayMessage();
-                });
-            }
-            
-            // Обработчик для проверки сессий Telegram
-            const checkSessionsButton = document.getElementById('check-sessions-button');
-            if (checkSessionsButton) {
-                checkSessionsButton.addEventListener('click', function() {
-                    checkTelegramSessions();
-                });
-            }
-            
-            // Инициализируем вкладки авторизации
+        // Инициализация приложения
+        function initApp() {
+            // Инициализация вкладок авторизации
             initAuthTabs();
+            
+            // Инициализация обработчиков событий
+            document.getElementById('logout-button').addEventListener('click', logout);
+            
+            // Инициализация кнопки "Назад к диалогам"
+            document.getElementById('back-to-dialogs').addEventListener('click', () => {
+                document.getElementById('messages-section').style.display = 'none';
+                document.getElementById('dialogs-section').style.display = 'block';
+            });
+            
+            // Инициализация формы отправки сообщений
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-message');
+            
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && messageInput.value.trim()) {
+                    sendMessage();
+                }
+            });
+            
+            sendButton.addEventListener('click', () => {
+                if (messageInput.value.trim()) {
+                    sendMessage();
+                }
+            });
+            
+            // Проверяем авторизацию
+            updateUI();
+            
+            // Обновляем отладочную информацию
+            updateAuthDebugInfo();
+        }
+        
+        // Функция для отправки сообщения
+        async function sendMessage() {
+            const messageInput = document.getElementById('message-input');
+            const text = messageInput.value.trim();
+            
+            if (!text) return;
+            
+            // Получаем ID текущего диалога
+            const dialogId = currentDialogId;
+            if (!dialogId) {
+                console.error('Не выбран диалог для отправки сообщения');
+                return;
+            }
+            
+            // Получаем токен
+            const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+            if (!token) {
+                showLoginForm();
+                return;
+            }
+            
+            try {
+                // Очищаем поле ввода
+                messageInput.value = '';
+                
+                // Добавляем сообщение в интерфейс (оптимистичное обновление)
+                addMessageToUI({
+                    id: 'temp_' + Date.now(),
+                    text: text,
+                    date: new Date().toISOString(),
+                    out: true,
+                    sender: {
+                        first_name: 'Вы'
+                    }
+                });
+                
+                // Отправляем сообщение на сервер
+                const response = await fetch(`/api/v1/messages/${dialogId}/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        text: text
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Ошибка при отправке сообщения');
+                }
+                
+                // Получаем ответ от сервера
+                const result = await response.json();
+                console.log('Сообщение отправлено:', result);
+                
+                // Обновляем список сообщений
+                loadMessages(dialogId, document.getElementById('current-dialog-header').textContent);
+            } catch (error) {
+                console.error('Ошибка при отправке сообщения:', error);
+                alert(`Ошибка при отправке сообщения: ${error.message}`);
+            }
+        }
+        
+        // Функция для добавления сообщения в интерфейс
+        function addMessageToUI(message) {
+            const messagesContainer = document.querySelector('.messages-container');
+            if (!messagesContainer) return;
+            
+            const messageItem = document.createElement('div');
+            messageItem.className = `message-item ${message.out ? 'outgoing' : 'incoming'}`;
+            
+            // Создаем контейнер для аватара (только для входящих сообщений)
+            if (!message.out && message.sender) {
+                const avatar = document.createElement('div');
+                avatar.className = 'message-avatar';
+                
+                if (message.sender.photo) {
+                    avatar.innerHTML = `<img src="${message.sender.photo}" alt="${message.sender.first_name || 'User'}">`;
+                } else {
+                    const initials = message.sender.first_name ? message.sender.first_name.charAt(0) : '?';
+                    avatar.innerHTML = `<div class="avatar-placeholder">${initials}</div>`;
+                }
+                
+                messageItem.appendChild(avatar);
+            }
+            
+            // Создаем контейнер для содержимого сообщения
+            const content = document.createElement('div');
+            content.className = 'message-content';
+            
+            // Добавляем имя отправителя (только для входящих сообщений)
+            if (!message.out && message.sender) {
+                const senderName = document.createElement('div');
+                senderName.className = 'message-sender';
+                senderName.textContent = message.sender.first_name || 'Unknown';
+                if (message.sender.last_name) {
+                    senderName.textContent += ` ${message.sender.last_name}`;
+                }
+                content.appendChild(senderName);
+            }
+            
+            // Добавляем текст сообщения
+            const text = document.createElement('div');
+            text.className = 'message-text';
+            text.textContent = message.text || '';
+            content.appendChild(text);
+            
+            // Добавляем время сообщения
+            const time = document.createElement('div');
+            time.className = 'message-time';
+            if (message.date) {
+                const date = new Date(message.date);
+                time.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            content.appendChild(time);
+            
+            messageItem.appendChild(content);
+            messagesContainer.appendChild(messageItem);
+            
+            // Прокручиваем к последнему сообщению
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Глобальная переменная для хранения ID текущего диалога
+        let currentDialogId = null;
+        
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            // Инициализируем приложение
+            initApp();
             
             // Инициализируем авторизацию по телефону
             initPhoneAuth();
             
-            // Обновляем отладочную информацию
-            updateAuthDebugInfo();
+            // Обработчики событий для кнопок отладки
+            const setWebhookButton = document.getElementById('set-webhook-button');
+            if (setWebhookButton) {
+                setWebhookButton.addEventListener('click', async function() {
+                    try {
+                        const webhookUrl = document.getElementById('webhook-url').value;
+                        
+                        const response = await fetch('/set-webhook', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                webhook_url: webhookUrl
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        alert(`Вебхук установлен: ${JSON.stringify(data)}`);
+                    } catch (error) {
+                        console.error('Ошибка при установке вебхука:', error);
+                        alert(`Ошибка при установке вебхука: ${error.message}`);
+                    }
+                });
+            }
+            
+            const deleteWebhookButton = document.getElementById('delete-webhook-button');
+            if (deleteWebhookButton) {
+                deleteWebhookButton.addEventListener('click', async function() {
+                    try {
+                        const response = await fetch('/delete-webhook', {
+                            method: 'POST'
+                        });
+                        
+                        const data = await response.json();
+                        alert(`Вебхук удален: ${JSON.stringify(data)}`);
+                    } catch (error) {
+                        console.error('Ошибка при удалении вебхука:', error);
+                        alert(`Ошибка при удалении вебхука: ${error.message}`);
+                    }
+                });
+            }
+            
+            const sendTestMessageButton = document.getElementById('send-test-message-button');
+            if (sendTestMessageButton) {
+                sendTestMessageButton.addEventListener('click', async function() {
+                    try {
+                        const chatId = document.getElementById('chat-id').value;
+                        
+                        if (!chatId) {
+                            alert('Пожалуйста, введите ID чата');
+                            return;
+                        }
+                        
+                        const response = await fetch('/send-test-message', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                chat_id: chatId
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        alert(`Сообщение отправлено: ${JSON.stringify(data)}`);
+                    } catch (error) {
+                        console.error('Ошибка при отправке тестового сообщения:', error);
+                        alert(`Ошибка при отправке тестового сообщения: ${error.message}`);
+                    }
+                });
+            }
+            
+            // Проверяем авторизацию и загружаем диалоги, если пользователь авторизован
+            updateUI();
         });
         
         // Функция для ручной авторизации
