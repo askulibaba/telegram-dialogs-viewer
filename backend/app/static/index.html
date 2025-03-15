@@ -1306,7 +1306,13 @@
                     <p><strong>Статус:</strong> ${sessionStatus}</p>
                     <p><strong>Детали:</strong> ${sessionDetails}</p>
                     <p><strong>ID пользователя:</strong> ${userData.id}</p>
-                    <p><strong>Ожидаемый путь к файлу сессии:</strong> /app/backend/app/sessions/user_${userData.id}.session</p>
+                    <p><strong>Директория сессий:</strong> <code>${responseData.detail && responseData.detail.session_info ? responseData.detail.session_info.sessions_dir : '[Нет данных]'}</code></p>
+                    <p><strong>Путь к файлу сессии:</strong> <code>${responseData.detail && responseData.detail.session_info ? responseData.detail.session_info.session_path : `[Нет данных] (ожидается: user_${userData.id}.session)`}</code></p>
+                    <p><strong>Сессия существует:</strong> ${responseData.detail && responseData.detail.session_info ? (responseData.detail.session_info.session_exists ? 'Да' : 'Нет') : 'Неизвестно'}</p>
+                    <p><strong>Размер файла сессии:</strong> ${responseData.detail && responseData.detail.session_info ? `${responseData.detail.session_info.session_size} байт` : 'Неизвестно'}</p>
+                    <p><strong>Права на запись:</strong> ${responseData.detail && responseData.detail.session_info ? (responseData.detail.session_info.write_permission ? 'Есть' : 'Нет') : 'Неизвестно'}</p>
+                    <p><strong>Railway Volume:</strong> ${responseData.detail && responseData.detail.session_info && responseData.detail.session_info.is_railway ? 
+                        (responseData.detail.session_info.railway_volume || 'Не настроен') : 'Не используется'}</p>
                     <p><strong>Код ответа API:</strong> ${response.status} ${response.statusText}</p>
                     <pre>${JSON.stringify(responseData, null, 2)}</pre>
                 `;

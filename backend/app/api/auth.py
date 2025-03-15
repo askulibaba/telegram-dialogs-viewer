@@ -1,16 +1,24 @@
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 import hashlib
 import hmac
 import json
 import time
 import logging
+import jwt
+import os
+from datetime import datetime, timedelta
 
 from app.core.security import create_access_token, verify_telegram_auth
-from app.services.telegram import send_code_request, sign_in
+from app.services.telegram import send_code_request, sign_in, sign_in_2fa, get_session_info
 from app.core.config import settings
+from app.models.auth import (
+    Token, User, PhoneAuthRequest, SignInRequest, 
+    SignIn2FARequest, TelegramAuthRequest, ManualAuthRequest
+)
 
 router = APIRouter()
 
@@ -346,4 +354,24 @@ async def manual_auth(request: ManualAuthRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
+        )
+
+@router.get("/sessions", response_model=Dict[str, Any])
+async def get_sessions_info(current_user: User = Depends(get_current_user)):
+    """
+    Получает информацию о сессиях пользователя для отладки
+    """
+    try:
+        # Получаем информацию о сессии
+        session_info = await get_session_info(current_user.id)
+        
+        return {
+            "user_id": current_user.id,
+            "session_info": session_info
+        }
+    except Exception as e:
+        logging.error(f"Ошибка при получении информации о сессиях: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при получении информации о сессиях: {str(e)}"
         ) 

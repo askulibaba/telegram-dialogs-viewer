@@ -892,4 +892,74 @@ async def send_message(user_id: int, dialog_id: int, text: str, reply_to: Option
         return result
     except Exception as e:
         logger.error(f"Ошибка при отправке сообщения: {str(e)}")
-        raise 
+        raise
+
+
+async def get_session_info(user_id: int) -> Dict[str, Any]:
+    """
+    Получает информацию о сессии пользователя для отладки
+    
+    Args:
+        user_id: ID пользователя
+        
+    Returns:
+        Dict[str, Any]: Информация о сессии
+    """
+    logger.info(f"Получение информации о сессии для пользователя {user_id}")
+    
+    # Создаем путь к файлу сессии
+    session_file = os.path.join(settings.SESSIONS_DIR, f"user_{user_id}")
+    session_file_path = f"{session_file}.session"
+    
+    # Проверяем существование директории сессий
+    sessions_dir_exists = os.path.exists(settings.SESSIONS_DIR)
+    
+    # Проверяем существование файла сессии
+    session_exists = os.path.exists(session_file_path)
+    
+    # Получаем список файлов сессий
+    sessions_list = []
+    if sessions_dir_exists:
+        try:
+            all_files = os.listdir(settings.SESSIONS_DIR)
+            sessions_list = [f for f in all_files if f.endswith('.session')]
+        except Exception as e:
+            logger.error(f"Ошибка при получении списка файлов сессий: {str(e)}")
+    
+    # Проверяем права на запись
+    write_permission = False
+    if sessions_dir_exists:
+        try:
+            test_file = os.path.join(settings.SESSIONS_DIR, "test_write_permission.tmp")
+            with open(test_file, 'w') as f:
+                f.write("test")
+            os.remove(test_file)
+            write_permission = True
+        except Exception as e:
+            logger.error(f"Нет прав на запись в директорию сессий: {str(e)}")
+    
+    # Получаем размер файла сессии
+    session_size = 0
+    if session_exists:
+        try:
+            session_size = os.path.getsize(session_file_path)
+        except Exception as e:
+            logger.error(f"Ошибка при получении размера файла сессии: {str(e)}")
+    
+    # Формируем информацию о сессии
+    session_info = {
+        "user_id": user_id,
+        "session_path": session_file_path,
+        "sessions_dir": settings.SESSIONS_DIR,
+        "sessions_dir_exists": sessions_dir_exists,
+        "session_exists": session_exists,
+        "session_size": session_size,
+        "write_permission": write_permission,
+        "sessions_list": sessions_list,
+        "is_railway": settings.IS_RAILWAY,
+        "railway_volume": settings.RAILWAY_VOLUME_NAME if settings.IS_RAILWAY else None,
+        "railway_volume_path": settings.RAILWAY_VOLUME_MOUNT_PATH if settings.IS_RAILWAY else None
+    }
+    
+    logger.info(f"Информация о сессии: {session_info}")
+    return session_info 
