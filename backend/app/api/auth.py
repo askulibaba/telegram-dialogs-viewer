@@ -8,7 +8,7 @@ import hmac
 import json
 import time
 import logging
-import jwt
+from jose import jwt
 import os
 from datetime import datetime, timedelta
 
