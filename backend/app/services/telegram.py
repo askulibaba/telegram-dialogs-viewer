@@ -646,8 +646,33 @@ async def get_messages(user_id: int, dialog_id: int, limit: int = 20, offset_id:
         return result
     except Exception as e:
         logger.error(f"Ошибка при получении сообщений: {str(e)}")
-        # В случае ошибки возвращаем тестовые данные
-        return await get_test_messages(dialog_id, user_id)
+        
+        # Собираем подробную информацию об ошибке
+        session_file = f"app/sessions/user_{user_id}.session"
+        session_exists = os.path.exists(session_file)
+        sessions_dir = "app/sessions"
+        sessions_list = os.listdir(sessions_dir) if os.path.exists(sessions_dir) else []
+        
+        error_message = f"Ошибка при получении сообщений: {str(e)}. "
+        error_message += f"Пользователь: {user_id}. "
+        error_message += f"Диалог: {dialog_id}. "
+        error_message += f"Время: {datetime.now().isoformat()}. "
+        error_message += f"Сессия: {session_file}. "
+        error_message += f"Сессия существует: {session_exists}. "
+        error_message += f"Содержимое директории сессий: {', '.join(sessions_list)}."
+        
+        # Проверяем тип ошибки
+        if "FloodWaitError" in str(e):
+            raise ValueError(f"Превышен лимит запросов к API Telegram: {str(e)}")
+        elif "UserDeactivatedBanError" in str(e) or "UserBannedInChannelError" in str(e):
+            raise ValueError(f"Аккаунт заблокирован Telegram: {str(e)}")
+        elif "AuthKeyUnregisteredError" in str(e) or "AuthKeyError" in str(e):
+            raise ValueError(f"Сессия для пользователя {user_id} не найдена или недействительна: {str(e)}")
+        elif "SessionPasswordNeededError" in str(e):
+            raise ValueError(f"Требуется пароль двухфакторной аутентификации: {str(e)}")
+        else:
+            # Выбрасываем исключение с подробной информацией
+            raise ValueError(error_message)
 
 
 async def get_test_messages(dialog_id: str, user_id: str) -> List[Dict[str, Any]]:

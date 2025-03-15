@@ -373,7 +373,7 @@
             dialogsList.innerHTML = '<div class="loading">Загрузка диалогов...</div>';
             
             // Формируем URL с параметром force_refresh
-            const url = `/api/dialogs?force_refresh=${forceRefresh}`;
+            const url = `/api/v1/dialogs?force_refresh=${forceRefresh}`;
             
             console.log(`Загрузка диалогов с URL: ${url}`);
             
@@ -1381,7 +1381,7 @@
                 
                 // Проверяем токен на сервере
                 try {
-                    const response = await fetch('/api/auth/check', {
+                    const response = await fetch('/api/v1/auth/check', {
                         headers: {
                             'Authorization': `Bearer ${token}`
                         }
