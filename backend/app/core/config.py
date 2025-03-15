@@ -38,10 +38,22 @@ class Settings(BaseSettings):
         # Если значение уже список или другой тип
         return v
     
-    # Telegram настройки
-    TELEGRAM_BOT_TOKEN: str
+    # Настройки Telegram
     TELEGRAM_API_ID: int
     TELEGRAM_API_HASH: str
+    
+    # Настройки бота
+    BOT_TOKEN: str = ""
+    
+    # Настройки JWT
+    JWT_SECRET_KEY: str = "your-secret-key"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 дней
+    
+    # Настройки Railway
+    IS_RAILWAY: bool = os.environ.get("RAILWAY_ENVIRONMENT") is not None
+    RAILWAY_VOLUME_NAME: Optional[str] = os.environ.get("RAILWAY_VOLUME_NAME")
+    RAILWAY_VOLUME_MOUNT_PATH: Optional[str] = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "/data")
     
     # Настройки сессий
     SESSIONS_DIR: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sessions")
@@ -54,5 +66,19 @@ class Settings(BaseSettings):
 # Создаем экземпляр настроек
 settings = Settings()
 
-# Создаем директорию для сессий, если она не существует
-os.makedirs(settings.SESSIONS_DIR, exist_ok=True) 
+# Если приложение запущено на Railway и есть подключенный volume
+if settings.IS_RAILWAY and settings.RAILWAY_VOLUME_MOUNT_PATH:
+    # Используем путь к volume для хранения сессий
+    sessions_path = os.path.join(settings.RAILWAY_VOLUME_MOUNT_PATH, "sessions")
+    settings.SESSIONS_DIR = sessions_path
+    
+    # Создаем директорию, если она не существует
+    os.makedirs(sessions_path, exist_ok=True)
+    
+    # Логируем информацию о настройках
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Приложение запущено на Railway с подключенным volume")
+    logger.info(f"Имя volume: {settings.RAILWAY_VOLUME_NAME}")
+    logger.info(f"Путь монтирования volume: {settings.RAILWAY_VOLUME_MOUNT_PATH}")
+    logger.info(f"Путь к директории сессий: {settings.SESSIONS_DIR}") 

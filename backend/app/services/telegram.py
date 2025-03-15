@@ -32,6 +32,48 @@ MIN_REQUEST_INTERVAL = 2.0
 # Время жизни кэша (в секундах)
 CACHE_TTL = 60.0  # 1 минута
 
+def ensure_sessions_dir():
+    """
+    Проверяет и создает директорию для сессий, если она не существует.
+    Также проверяет права на запись.
+    
+    Returns:
+        bool: True, если директория существует и доступна для записи, иначе False
+    """
+    try:
+        # Проверяем существование директории сессий
+        if not os.path.exists(settings.SESSIONS_DIR):
+            try:
+                os.makedirs(settings.SESSIONS_DIR, exist_ok=True)
+                logger.info(f"Создана директория сессий: {settings.SESSIONS_DIR}")
+            except Exception as e:
+                logger.error(f"Ошибка при создании директории сессий: {str(e)}")
+                return False
+        
+        # Проверяем права на запись в директорию сессий
+        try:
+            test_file = os.path.join(settings.SESSIONS_DIR, "test_write_permission.tmp")
+            with open(test_file, 'w') as f:
+                f.write("test")
+            os.remove(test_file)
+            logger.info(f"Проверка прав на запись в директорию сессий успешна")
+            return True
+        except Exception as e:
+            logger.error(f"Нет прав на запись в директорию сессий: {str(e)}")
+            return False
+    except Exception as e:
+        logger.error(f"Ошибка при проверке директории сессий: {str(e)}")
+        return False
+
+# Проверяем директорию сессий при запуске
+sessions_dir_writable = ensure_sessions_dir()
+logger.info(f"Директория сессий доступна для записи: {sessions_dir_writable}")
+if settings.IS_RAILWAY:
+    logger.info(f"Приложение запущено на Railway. Путь к сессиям: {settings.SESSIONS_DIR}")
+    if settings.RAILWAY_VOLUME_MOUNT_PATH:
+        logger.info(f"Используется Railway Volume: {settings.RAILWAY_VOLUME_NAME}")
+        logger.info(f"Путь монтирования: {settings.RAILWAY_VOLUME_MOUNT_PATH}")
+
 async def wait_for_request_limit(user_id: int):
     """
     Ожидает, если необходимо, чтобы соблюсти ограничения на частоту запросов
