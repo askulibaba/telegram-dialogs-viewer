@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 
 from app.core.config import settings
 from app.api import auth, dialogs
+from app.core.security import verify_token
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
