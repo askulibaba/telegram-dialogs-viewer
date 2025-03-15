@@ -373,8 +373,15 @@ async def sign_in(
         
         # Явно сохраняем сессию
         try:
-            await client.session.save()
-            logger.info(f"Сессия сохранена явно")
+            # Проверяем, что сессия существует и имеет метод save
+            if client.session and hasattr(client.session, 'save'):
+                if asyncio.iscoroutinefunction(client.session.save):
+                    await client.session.save()
+                else:
+                    client.session.save()
+                logger.info(f"Сессия сохранена явно")
+            else:
+                logger.warning(f"Не удалось сохранить сессию: объект сессии отсутствует или не имеет метода save")
         except Exception as e:
             logger.error(f"Ошибка при явном сохранении сессии: {str(e)}")
             raise ValueError(f"Не удалось сохранить сессию: {str(e)}")
