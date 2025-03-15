@@ -88,6 +88,15 @@ async def get_client(user_id: int) -> TelegramClient:
             # Если произошла ошибка, удаляем клиент из кэша
             del clients[user_id]
     
+    # Проверяем существование директории сессий
+    if not os.path.exists(settings.SESSIONS_DIR):
+        try:
+            os.makedirs(settings.SESSIONS_DIR, exist_ok=True)
+            logger.info(f"Создана директория сессий: {settings.SESSIONS_DIR}")
+        except Exception as e:
+            logger.error(f"Ошибка при создании директории сессий: {str(e)}")
+            raise ValueError(f"Не удалось создать директорию сессий: {str(e)}")
+    
     # Создаем путь к файлу сессии
     session_file = os.path.join(settings.SESSIONS_DIR, f"user_{user_id}")
     logger.info(f"Путь к файлу сессии: {session_file}")
@@ -126,7 +135,31 @@ async def get_client(user_id: int) -> TelegramClient:
         
         # Если файл сессии все еще не существует, выбрасываем исключение
         if not os.path.exists(f"{session_file}.session"):
-            raise ValueError(f"Сессия для пользователя {user_id} не найдена")
+            # Проверяем права на запись в директорию сессий
+            try:
+                test_file = os.path.join(settings.SESSIONS_DIR, "test_write_permission.tmp")
+                with open(test_file, 'w') as f:
+                    f.write("test")
+                os.remove(test_file)
+                logger.info(f"Проверка прав на запись в директорию сессий успешна")
+            except Exception as e:
+                logger.error(f"Нет прав на запись в директорию сессий: {str(e)}")
+                raise ValueError(f"Нет прав на запись в директорию сессий: {str(e)}")
+            
+            # Создаем пустой файл сессии для тестирования
+            try:
+                with open(f"{session_file}.session", 'w') as f:
+                    f.write("")
+                logger.info(f"Создан пустой файл сессии для тестирования: {session_file}.session")
+                
+                # Если удалось создать файл, значит, права на запись есть, но сессия отсутствует
+                os.remove(f"{session_file}.session")
+                logger.info(f"Пустой файл сессии удален: {session_file}.session")
+                
+                raise ValueError(f"Сессия для пользователя {user_id} не найдена. Необходима авторизация.")
+            except Exception as e:
+                logger.error(f"Ошибка при создании пустого файла сессии: {str(e)}")
+                raise ValueError(f"Нет прав на запись файла сессии: {str(e)}")
     else:
         # Проверяем размер файла сессии
         try:
@@ -160,7 +193,17 @@ async def get_client(user_id: int) -> TelegramClient:
         
         if not is_authorized:
             logger.error(f"Пользователь {user_id} не авторизован")
-            raise ValueError("Пользователь не авторизован")
+            
+            # Проверяем, существует ли файл сессии
+            if os.path.exists(f"{session_file}.session"):
+                # Если файл существует, но авторизация не работает, пробуем удалить его
+                try:
+                    os.remove(f"{session_file}.session")
+                    logger.info(f"Удален некорректный файл сессии: {session_file}.session")
+                except Exception as e:
+                    logger.error(f"Ошибка при удалении некорректного файла сессии: {str(e)}")
+            
+            raise ValueError("Пользователь не авторизован. Требуется повторная авторизация.")
         
         # Получаем информацию о пользователе
         try:
@@ -319,12 +362,22 @@ async def sign_in(
             "phone": phone_number
         }
         
+        # Проверяем существование директории сессий
+        if not os.path.exists(settings.SESSIONS_DIR):
+            try:
+                os.makedirs(settings.SESSIONS_DIR, exist_ok=True)
+                logger.info(f"Создана директория сессий: {settings.SESSIONS_DIR}")
+            except Exception as e:
+                logger.error(f"Ошибка при создании директории сессий: {str(e)}")
+                raise ValueError(f"Не удалось создать директорию сессий: {str(e)}")
+        
         # Явно сохраняем сессию
         try:
             await client.session.save()
             logger.info(f"Сессия сохранена явно")
         except Exception as e:
             logger.error(f"Ошибка при явном сохранении сессии: {str(e)}")
+            raise ValueError(f"Не удалось сохранить сессию: {str(e)}")
         
         # Перемещаем сессию из временной в постоянную
         temp_session_file = os.path.join(settings.SESSIONS_DIR, f"temp_user_{temp_user_id}")
@@ -333,6 +386,17 @@ async def sign_in(
         
         if os.path.exists(f"{temp_session_file}.session"):
             try:
+                # Проверяем права на запись в директорию сессий
+                try:
+                    test_file = os.path.join(settings.SESSIONS_DIR, "test_write_permission.tmp")
+                    with open(test_file, 'w') as f:
+                        f.write("test")
+                    os.remove(test_file)
+                    logger.info(f"Проверка прав на запись в директорию сессий успешна")
+                except Exception as e:
+                    logger.error(f"Нет прав на запись в директорию сессий: {str(e)}")
+                    raise ValueError(f"Нет прав на запись в директорию сессий: {str(e)}")
+                
                 # Копируем файл сессии
                 import shutil
                 try:
@@ -343,6 +407,14 @@ async def sign_in(
                     if os.path.exists(f"{permanent_session_file}.session"):
                         logger.info(f"Файл сессии успешно создан: {permanent_session_file}.session")
                         
+                        # Проверяем размер файла сессии
+                        file_size = os.path.getsize(f"{permanent_session_file}.session")
+                        logger.info(f"Размер файла сессии: {file_size} байт")
+                        
+                        if file_size == 0:
+                            logger.error(f"Файл сессии пуст: {permanent_session_file}.session")
+                            raise ValueError(f"Файл сессии пуст: {permanent_session_file}.session")
+                        
                         # Удаляем временный файл сессии
                         try:
                             os.remove(f"{temp_session_file}.session")
@@ -351,10 +423,13 @@ async def sign_in(
                             logger.error(f"Ошибка при удалении временного файла сессии: {str(e)}")
                     else:
                         logger.error(f"Файл сессии не был создан: {permanent_session_file}.session")
+                        raise ValueError(f"Файл сессии не был создан: {permanent_session_file}.session")
                 except Exception as copy_error:
                     logger.error(f"Ошибка при копировании сессии: {str(copy_error)}")
+                    raise ValueError(f"Ошибка при копировании сессии: {str(copy_error)}")
             except Exception as e:
                 logger.error(f"Ошибка при работе с файлами сессий: {str(e)}")
+                raise ValueError(f"Ошибка при работе с файлами сессий: {str(e)}")
         else:
             logger.warning(f"Файл сессии не найден: {temp_session_file}.session")
             
@@ -364,6 +439,8 @@ async def sign_in(
                 logger.info(f"Файлы в директории сессий: {session_files}")
             except Exception as e:
                 logger.error(f"Ошибка при чтении директории сессий: {str(e)}")
+            
+            raise ValueError(f"Файл сессии не найден: {temp_session_file}.session")
         
         # Создаем новый клиент с постоянным файлом сессии
         try:
