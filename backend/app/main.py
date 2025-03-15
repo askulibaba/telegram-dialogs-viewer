@@ -434,7 +434,7 @@ async def get_dialogs_direct(request: Request):
     authorization = request.headers.get("Authorization")
     if not authorization:
         logger.error("Не указан токен авторизации")
-        return JSONResponse({"error": "Не указан токен авторизации"}, status_code=401)
+        return JSONResponse({"detail": "Не указан токен авторизации"}, status_code=401)
     
     try:
         # Проверяем формат токена
@@ -442,17 +442,17 @@ async def get_dialogs_direct(request: Request):
             scheme, token = authorization.split()
             if scheme.lower() != "bearer":
                 logger.error(f"Неверный формат токена: {scheme}")
-                return JSONResponse({"error": "Неверный формат токена"}, status_code=401)
+                return JSONResponse({"detail": "Неверный формат токена"}, status_code=401)
         except ValueError:
             logger.error(f"Неверный формат токена авторизации: {authorization}")
-            return JSONResponse({"error": "Неверный формат токена авторизации"}, status_code=401)
+            return JSONResponse({"detail": "Неверный формат токена авторизации"}, status_code=401)
         
         # Извлекаем ID пользователя из токена
         logger.info(f"Проверка токена: {token[:10]}...")
         token_data = verify_token(token)
         if not token_data:
             logger.error("Токен не прошел проверку")
-            return JSONResponse({"error": "Неверный токен авторизации"}, status_code=401)
+            return JSONResponse({"detail": "Неверный токен авторизации"}, status_code=401)
         
         user_id = token_data.user_id
         logger.info(f"Токен прошел проверку, user_id: {user_id}")
@@ -467,7 +467,7 @@ async def get_dialogs_direct(request: Request):
             logger.info(f"ID пользователя преобразован в целое число: {user_id_int}")
         except ValueError:
             logger.error(f"Невозможно преобразовать ID пользователя '{user_id}' в целое число")
-            return JSONResponse({"error": "Неверный формат ID пользователя"}, status_code=400)
+            return JSONResponse({"detail": "Неверный формат ID пользователя"}, status_code=400)
         
         # Получаем диалоги из Telegram
         try:
@@ -482,16 +482,50 @@ async def get_dialogs_direct(request: Request):
             
             if "Превышен лимит запросов к API Telegram" in error_message:
                 # Если превышен лимит запросов, возвращаем соответствующую ошибку
-                return JSONResponse({"error": error_message}, status_code=429)
+                return JSONResponse({"detail": error_message}, status_code=429)
             elif "Аккаунт заблокирован Telegram" in error_message:
                 # Если аккаунт заблокирован, возвращаем соответствующую ошибку
-                return JSONResponse({"error": error_message}, status_code=403)
+                return JSONResponse({"detail": error_message}, status_code=403)
             elif "Сессия для пользователя" in error_message and "не найдена" in error_message:
-                # Если сессия не найдена, возвращаем соответствующую ошибку
-                return JSONResponse({"error": "Требуется авторизация в Telegram"}, status_code=401)
+                # Если сессия не найдена, возвращаем подробную информацию о сессии
+                import os
+                from app.core.config import settings
+                
+                # Собираем информацию о сессии
+                session_path = os.path.join(settings.SESSIONS_DIR, f"user_{user_id_int}.session")
+                session_exists = os.path.exists(session_path)
+                sessions_dir_exists = os.path.exists(settings.SESSIONS_DIR)
+                
+                # Получаем список файлов в директории сессий
+                sessions_list = []
+                if sessions_dir_exists:
+                    try:
+                        sessions_list = [f for f in os.listdir(settings.SESSIONS_DIR) if f.endswith('.session')]
+                    except Exception as list_error:
+                        logger.error(f"Ошибка при получении списка сессий: {list_error}")
+                
+                # Формируем подробную информацию об ошибке
+                session_info = {
+                    "user_id": user_id_int,
+                    "session_path": session_path,
+                    "session_exists": session_exists,
+                    "sessions_dir_exists": sessions_dir_exists,
+                    "sessions_list": sessions_list,
+                    "sessions_dir": settings.SESSIONS_DIR,
+                    "railway_volume": settings.RAILWAY_VOLUME_MOUNT_PATH if settings.IS_RAILWAY else None
+                }
+                
+                detail = {
+                    "error": "Требуется авторизация в Telegram",
+                    "message": error_message,
+                    "session_info": session_info,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                return JSONResponse({"detail": detail}, status_code=401)
             else:
                 # Возвращаем подробную информацию об ошибке
-                return JSONResponse({"error": error_message}, status_code=400)
+                return JSONResponse({"detail": error_message}, status_code=400)
     except Exception as e:
         logger.error(f"Ошибка при обработке запроса диалогов: {e}", exc_info=True)
         # Возвращаем подробную информацию об ошибке
@@ -500,4 +534,4 @@ async def get_dialogs_direct(request: Request):
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
-        return JSONResponse({"error": error_detail}, status_code=500) 
+        return JSONResponse({"detail": error_detail}, status_code=500) 
