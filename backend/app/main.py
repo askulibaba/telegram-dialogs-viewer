@@ -440,53 +440,45 @@ async def get_dialogs_direct(request: Request):
             return JSONResponse({"error": "Неверный формат токена"}, status_code=401)
         
         # Извлекаем ID пользователя из токена
-        if token.startswith("test_token_"):
-            user_id = token.split("_")[-1]
-        else:
-            user_id = "unknown"
+        token_data = verify_token(token)
+        if not token_data:
+            return JSONResponse({"error": "Неверный токен авторизации"}, status_code=401)
         
-        # Возвращаем тестовые данные
-        from datetime import datetime, timedelta
-        import random
+        user_id = token_data.user_id
+        logger.info(f"Получение диалогов для пользователя {user_id}")
         
-        now = datetime.now()
-        yesterday = now - timedelta(days=1)
+        # Получаем параметры запроса
+        force_refresh = request.query_params.get("force_refresh", "false").lower() == "true"
         
-        dialogs = [
-            {
-                "id": "1",
-                "title": "Тестовый диалог 1",
-                "last_message": "Привет! Как дела?",
-                "last_message_date": now.isoformat(),
-                "unread_count": 2
-            },
-            {
-                "id": "2",
-                "title": "Тестовый диалог 2",
-                "last_message": "Посмотри это видео!",
-                "last_message_date": yesterday.isoformat(),
-                "unread_count": 0
-            },
-            {
-                "id": "3",
-                "title": "Тестовый диалог 3",
-                "last_message": "Спасибо за информацию",
-                "last_message_date": (now - timedelta(days=2)).isoformat(),
-                "unread_count": 0
-            }
-        ]
+        # Преобразуем ID пользователя в целое число
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            logger.error(f"Невозможно преобразовать ID пользователя '{user_id}' в целое число")
+            return JSONResponse({"error": "Неверный формат ID пользователя"}, status_code=400)
         
-        # Добавляем случайные диалоги
-        for i in range(random.randint(1, 3)):
-            dialogs.append({
-                "id": str(100 + i),
-                "title": f"Случайный диалог {i+1}",
-                "last_message": f"Сообщение {random.randint(1, 100)}",
-                "last_message_date": (now - timedelta(hours=random.randint(1, 24))).isoformat(),
-                "unread_count": random.randint(0, 10)
-            })
-        
-        return JSONResponse(dialogs)
+        # Получаем диалоги из Telegram
+        try:
+            from app.services.telegram import get_dialogs
+            dialogs = await get_dialogs(user_id_int, force_refresh=force_refresh)
+            logger.info(f"Получено {len(dialogs)} диалогов для пользователя {user_id}")
+            return JSONResponse(dialogs)
+        except ValueError as e:
+            logger.error(f"Ошибка при получении диалогов: {e}")
+            error_message = str(e)
+            
+            if "Превышен лимит запросов к API Telegram" in error_message:
+                # Если превышен лимит запросов, возвращаем соответствующую ошибку
+                return JSONResponse({"error": error_message}, status_code=429)
+            elif "Аккаунт заблокирован Telegram" in error_message:
+                # Если аккаунт заблокирован, возвращаем соответствующую ошибку
+                return JSONResponse({"error": error_message}, status_code=403)
+            elif "Сессия для пользователя" in error_message and "не найдена" in error_message:
+                # Если сессия не найдена, возвращаем соответствующую ошибку
+                return JSONResponse({"error": "Требуется авторизация в Telegram"}, status_code=401)
+            else:
+                # Возвращаем подробную информацию об ошибке
+                return JSONResponse({"error": error_message}, status_code=400)
     except Exception as e:
         logger.error(f"Ошибка при обработке запроса диалогов: {e}", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500) 
