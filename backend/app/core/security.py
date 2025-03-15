@@ -10,8 +10,11 @@ from typing import Optional, Dict, Any
 
 from jose import jwt
 from pydantic import BaseModel
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 
 from app.core.config import settings
+from app.models.auth import User
 
 logger = logging.getLogger(__name__)
 
@@ -116,3 +119,40 @@ def verify_telegram_auth(data: Dict[str, Any]) -> bool:
     """
     # Заглушка для тестирования
     return True
+
+
+# Создаем схему OAuth2 для получения токена из заголовка Authorization
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
+    """
+    Получает текущего пользователя из токена
+    
+    Args:
+        token: JWT токен
+        
+    Returns:
+        User: Данные пользователя
+        
+    Raises:
+        HTTPException: Если токен недействителен или пользователь не найден
+    """
+    if token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Не предоставлены учетные данные",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token_data = verify_token(token)
+    if token_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Недействительный токен аутентификации",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Создаем объект пользователя из данных токена
+    user = User(id=token_data.user_id)
+    
+    return user

@@ -12,7 +12,7 @@ import jwt
 import os
 from datetime import datetime, timedelta
 
-from app.core.security import create_access_token, verify_telegram_auth
+from app.core.security import create_access_token, verify_telegram_auth, get_current_user
 from app.services.telegram import send_code_request, sign_in, sign_in_2fa, get_session_info
 from app.core.config import settings
 from app.models.auth import (
@@ -23,16 +23,6 @@ from app.models.auth import (
 router = APIRouter()
 
 logger = logging.getLogger(__name__)
-
-class TelegramAuthRequest(BaseModel):
-    """Запрос на авторизацию через Telegram Login Widget"""
-    id: int
-    first_name: str
-    last_name: Optional[str] = None
-    username: Optional[str] = None
-    photo_url: Optional[str] = None
-    auth_date: int
-    hash: str
 
 class PhoneAuthRequest(BaseModel):
     """Запрос на отправку кода подтверждения"""
