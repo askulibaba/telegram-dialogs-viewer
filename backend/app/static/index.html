@@ -386,9 +386,21 @@
                 return;
             }
 
-            // Очищаем список диалогов и показываем индикатор загрузки
+            // Скрываем сообщение об ошибке, если оно было показано ранее
+            const errorMessage = document.getElementById('error-message');
+            if (errorMessage) {
+                errorMessage.style.display = 'none';
+            }
+
+            // Показываем индикатор загрузки
+            const loading = document.getElementById('loading');
+            if (loading) {
+                loading.style.display = 'block';
+            }
+
+            // Очищаем список диалогов
             const dialogsList = document.getElementById('dialogs-list');
-            dialogsList.innerHTML = '<div class="loading">Загрузка диалогов...</div>';
+            dialogsList.innerHTML = '';
             
             // Формируем URL с параметром force_refresh
             const url = `/api/v1/dialogs?force_refresh=${forceRefresh}`;
@@ -408,14 +420,19 @@
                     return response.json().then(data => {
                         console.log('Ошибка авторизации:', data);
                         
+                        // Скрываем индикатор загрузки
+                        if (loading) {
+                            loading.style.display = 'none';
+                        }
+                        
                         // Проверяем, есть ли подробная информация о сессии
                         if (data.detail && typeof data.detail === 'object' && data.detail.session_info) {
                             const sessionInfo = data.detail.session_info;
                             console.log('Информация о сессии:', sessionInfo);
                             
                             // Отображаем подробную информацию об ошибке
-                            dialogsList.innerHTML = `
-                                <div class="error-message">
+                            if (errorMessage) {
+                                errorMessage.innerHTML = `
                                     <h3>Требуется авторизация в Telegram</h3>
                                     <p>${data.detail.error || 'Сессия не найдена'}</p>
                                     <div class="debug-info">
@@ -429,16 +446,18 @@
                                         </ul>
                                     </div>
                                     <button class="auth-button" onclick="showTelegramAuthForm()">Авторизоваться в Telegram</button>
-                                </div>
-                            `;
+                                `;
+                                errorMessage.style.display = 'block';
+                            }
                         } else {
                             // Стандартное сообщение об авторизации
-                            dialogsList.innerHTML = `
-                                <div class="error-message">
+                            if (errorMessage) {
+                                errorMessage.innerHTML = `
                                     <p>Требуется авторизация в Telegram</p>
                                     <button class="auth-button" onclick="showTelegramAuthForm()">Авторизоваться в Telegram</button>
-                                </div>
-                            `;
+                                `;
+                                errorMessage.style.display = 'block';
+                            }
                         }
                         throw new Error('Требуется авторизация в Telegram');
                     });
@@ -446,25 +465,39 @@
                     // Если превышен лимит запросов
                     return response.json().then(data => {
                         console.log('Превышен лимит запросов:', data);
-                        dialogsList.innerHTML = `
-                            <div class="error-message">
+                        
+                        // Скрываем индикатор загрузки
+                        if (loading) {
+                            loading.style.display = 'none';
+                        }
+                        
+                        if (errorMessage) {
+                            errorMessage.innerHTML = `
                                 <h3>Превышен лимит запросов к API Telegram</h3>
                                 <p>${data.detail || 'Пожалуйста, подождите некоторое время перед повторной попыткой.'}</p>
                                 <button class="retry-button" onclick="loadDialogs(true)">Повторить</button>
-                            </div>
-                        `;
+                            `;
+                            errorMessage.style.display = 'block';
+                        }
                         throw new Error('Превышен лимит запросов к API Telegram');
                     });
                 } else if (response.status === 403) {
                     // Если аккаунт заблокирован
                     return response.json().then(data => {
                         console.log('Аккаунт заблокирован:', data);
-                        dialogsList.innerHTML = `
-                            <div class="error-message">
+                        
+                        // Скрываем индикатор загрузки
+                        if (loading) {
+                            loading.style.display = 'none';
+                        }
+                        
+                        if (errorMessage) {
+                            errorMessage.innerHTML = `
                                 <h3>Аккаунт заблокирован Telegram</h3>
                                 <p>${data.detail || 'Ваш аккаунт был заблокирован Telegram. Пожалуйста, проверьте статус вашего аккаунта в официальном приложении.'}</p>
-                            </div>
-                        `;
+                            `;
+                            errorMessage.style.display = 'block';
+                        }
                         throw new Error('Аккаунт заблокирован Telegram');
                     });
                 } else if (!response.ok) {
@@ -472,28 +505,34 @@
                     return response.json().then(data => {
                         console.log('Ошибка при загрузке диалогов:', data);
                         
+                        // Скрываем индикатор загрузки
+                        if (loading) {
+                            loading.style.display = 'none';
+                        }
+                        
                         // Проверяем, есть ли подробная информация об ошибке
-                        let errorMessage = 'Произошла ошибка при загрузке диалогов.';
+                        let errorMsg = 'Произошла ошибка при загрузке диалогов.';
                         let errorDetails = '';
                         
                         if (data.detail) {
                             if (typeof data.detail === 'object') {
-                                errorMessage = data.detail.message || errorMessage;
+                                errorMsg = data.detail.message || errorMsg;
                                 errorDetails = `<pre>${JSON.stringify(data.detail, null, 2)}</pre>`;
                             } else {
-                                errorMessage = data.detail;
+                                errorMsg = data.detail;
                             }
                         }
                         
-                        dialogsList.innerHTML = `
-                            <div class="error-message">
+                        if (errorMessage) {
+                            errorMessage.innerHTML = `
                                 <h3>Ошибка</h3>
-                                <p>${errorMessage}</p>
+                                <p>${errorMsg}</p>
                                 ${errorDetails}
                                 <button class="retry-button" onclick="loadDialogs(true)">Повторить</button>
-                            </div>
-                        `;
-                        throw new Error(`Ошибка при загрузке диалогов: ${errorMessage}`);
+                            `;
+                            errorMessage.style.display = 'block';
+                        }
+                        throw new Error(`Ошибка при загрузке диалогов: ${errorMsg}`);
                     });
                 }
                 
@@ -501,6 +540,11 @@
             })
             .then(dialogs => {
                 console.log(`Получено диалогов: ${dialogs.length}`);
+                
+                // Скрываем индикатор загрузки
+                if (loading) {
+                    loading.style.display = 'none';
+                }
                 
                 // Очищаем список диалогов
                 dialogsList.innerHTML = '';
@@ -549,11 +593,37 @@
                     info.appendChild(title);
                     info.appendChild(lastMessage);
                     
+                    const meta = document.createElement('div');
+                    meta.className = 'dialog-meta';
+                    
+                    // Добавляем время последнего сообщения, если оно есть
+                    if (dialog.last_message_date) {
+                        const time = document.createElement('div');
+                        time.className = 'dialog-time';
+                        const date = new Date(dialog.last_message_date);
+                        time.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        meta.appendChild(time);
+                    }
+                    
+                    // Добавляем счетчик непрочитанных сообщений, если они есть
+                    if (dialog.unread_count && dialog.unread_count > 0) {
+                        const unread = document.createElement('div');
+                        unread.className = 'dialog-unread';
+                        unread.textContent = dialog.unread_count;
+                        meta.appendChild(unread);
+                    }
+                    
                     dialogItem.appendChild(avatar);
                     dialogItem.appendChild(info);
+                    dialogItem.appendChild(meta);
                     
                     dialogsList.appendChild(dialogItem);
                 });
+                
+                // Показываем раздел с диалогами
+                document.getElementById('dialogs-section').style.display = 'block';
+                // Скрываем раздел с сообщениями
+                document.getElementById('messages-section').style.display = 'none';
             })
             .catch(error => {
                 console.error('Ошибка при загрузке диалогов:', error);
@@ -1022,23 +1092,23 @@
             const messageInput = document.getElementById('message-input');
             const sendButton = document.getElementById('send-message');
             
-            messageInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && messageInput.value.trim()) {
-                    sendMessage();
-                }
-            });
-            
-            sendButton.addEventListener('click', () => {
-                if (messageInput.value.trim()) {
-                    sendMessage();
-                }
-            });
+            if (messageInput && sendButton) {
+                messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && messageInput.value.trim()) {
+                        sendMessage();
+                    }
+                });
+                
+                sendButton.addEventListener('click', () => {
+                    if (messageInput.value.trim()) {
+                        sendMessage();
+                    }
+                });
+            }
             
             // Проверяем авторизацию
+            // Важно: updateUI сама вызовет loadDialogs, если пользователь авторизован
             updateUI();
-            
-            // Обновляем отладочную информацию
-            updateAuthDebugInfo();
         }
         
         // Функция для отправки сообщения
@@ -1437,21 +1507,55 @@
             }
         }
         
-        // Функция для обновления интерфейса
+        // Функция для обновления интерфейса в зависимости от статуса авторизации
         function updateUI(isAuthenticated) {
+            console.log('Обновление интерфейса, статус авторизации:', isAuthenticated);
+            
+            // Если статус авторизации не указан, проверяем наличие токена
+            if (isAuthenticated === undefined) {
+                const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+                isAuthenticated = !!token;
+            }
+            
+            // Получаем элементы интерфейса
             const authSection = document.getElementById('auth-section');
             const dialogsSection = document.getElementById('dialogs-section');
             const userInfo = document.getElementById('user-info');
+            const userName = document.getElementById('user-name');
+            const errorMessage = document.getElementById('error-message');
             
+            // Обновляем отображение элементов в зависимости от статуса авторизации
             if (isAuthenticated) {
-                authSection.style.display = 'none';
-                dialogsSection.style.display = 'block';
-                userInfo.style.display = 'block';
+                // Пользователь авторизован
+                if (authSection) authSection.style.display = 'none';
+                if (dialogsSection) dialogsSection.style.display = 'block';
+                if (userInfo) userInfo.style.display = 'block';
+                if (errorMessage) errorMessage.style.display = 'none';
+                
+                // Отображаем имя пользователя, если оно есть
+                const user = JSON.parse(localStorage.getItem('user') || '{}');
+                if (userName && user.first_name) {
+                    userName.textContent = user.first_name;
+                    if (user.last_name) {
+                        userName.textContent += ' ' + user.last_name;
+                    }
+                }
+                
+                // Загружаем диалоги
+                loadDialogs();
             } else {
-                authSection.style.display = 'block';
-                dialogsSection.style.display = 'none';
-                userInfo.style.display = 'none';
+                // Пользователь не авторизован
+                if (authSection) authSection.style.display = 'block';
+                if (dialogsSection) dialogsSection.style.display = 'none';
+                if (userInfo) userInfo.style.display = 'none';
+                
+                // Очищаем список диалогов
+                const dialogsList = document.getElementById('dialogs-list');
+                if (dialogsList) dialogsList.innerHTML = '';
             }
+            
+            // Обновляем отладочную информацию
+            updateAuthDebugInfo();
         }
         
         // Глобальная функция для обработки авторизации через Telegram
