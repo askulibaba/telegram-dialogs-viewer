@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from datetime import datetime
 
 from app.core.config import settings
 from app.api import auth, dialogs
@@ -432,28 +433,38 @@ async def get_dialogs_direct(request: Request):
     # Получаем токен из заголовка
     authorization = request.headers.get("Authorization")
     if not authorization:
+        logger.error("Не указан токен авторизации")
         return JSONResponse({"error": "Не указан токен авторизации"}, status_code=401)
     
     try:
         # Проверяем формат токена
-        scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
-            return JSONResponse({"error": "Неверный формат токена"}, status_code=401)
+        try:
+            scheme, token = authorization.split()
+            if scheme.lower() != "bearer":
+                logger.error(f"Неверный формат токена: {scheme}")
+                return JSONResponse({"error": "Неверный формат токена"}, status_code=401)
+        except ValueError:
+            logger.error(f"Неверный формат токена авторизации: {authorization}")
+            return JSONResponse({"error": "Неверный формат токена авторизации"}, status_code=401)
         
         # Извлекаем ID пользователя из токена
+        logger.info(f"Проверка токена: {token[:10]}...")
         token_data = verify_token(token)
         if not token_data:
+            logger.error("Токен не прошел проверку")
             return JSONResponse({"error": "Неверный токен авторизации"}, status_code=401)
         
         user_id = token_data.user_id
-        logger.info(f"Получение диалогов для пользователя {user_id}")
+        logger.info(f"Токен прошел проверку, user_id: {user_id}")
         
         # Получаем параметры запроса
         force_refresh = request.query_params.get("force_refresh", "false").lower() == "true"
+        logger.info(f"Параметр force_refresh: {force_refresh}")
         
         # Преобразуем ID пользователя в целое число
         try:
             user_id_int = int(user_id)
+            logger.info(f"ID пользователя преобразован в целое число: {user_id_int}")
         except ValueError:
             logger.error(f"Невозможно преобразовать ID пользователя '{user_id}' в целое число")
             return JSONResponse({"error": "Неверный формат ID пользователя"}, status_code=400)
@@ -461,6 +472,7 @@ async def get_dialogs_direct(request: Request):
         # Получаем диалоги из Telegram
         try:
             from app.services.telegram import get_dialogs
+            logger.info(f"Вызов функции get_dialogs для пользователя {user_id_int}")
             dialogs = await get_dialogs(user_id_int, force_refresh=force_refresh)
             logger.info(f"Получено {len(dialogs)} диалогов для пользователя {user_id}")
             return JSONResponse(dialogs)
@@ -482,4 +494,10 @@ async def get_dialogs_direct(request: Request):
                 return JSONResponse({"error": error_message}, status_code=400)
     except Exception as e:
         logger.error(f"Ошибка при обработке запроса диалогов: {e}", exc_info=True)
-        return JSONResponse({"error": str(e)}, status_code=500) 
+        # Возвращаем подробную информацию об ошибке
+        error_detail = {
+            "message": "Внутренняя ошибка сервера",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+        return JSONResponse({"error": error_detail}, status_code=500) 
