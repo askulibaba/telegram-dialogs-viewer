@@ -409,110 +409,91 @@ async def sign_in(
         raise
 
 
-async def get_dialogs(user_id: int, limit: int = 20, force_refresh: bool = False) -> List[Dict[str, Any]]:
+async def get_dialogs(user_id: int, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Получает список диалогов пользователя
-    
-    Args:
-        user_id: ID пользователя
-        limit: Максимальное количество диалогов
-        force_refresh: Принудительно обновить кэш
-        
-    Returns:
-        List[Dict[str, Any]]: Список диалогов
     """
-    logger.info(f"Получение диалогов для пользователя {user_id}")
-    
     # Проверяем кэш, если не требуется принудительное обновление
     if not force_refresh and user_id in dialogs_cache:
         cached_dialogs, timestamp = dialogs_cache[user_id]
-        elapsed = time.time() - timestamp
-        
-        if elapsed < CACHE_TTL:
-            logger.info(f"Возвращаем кэшированные диалоги для пользователя {user_id} (возраст: {elapsed:.2f} сек)")
+        # Если кэш не устарел, возвращаем его
+        if time.time() - timestamp < CACHE_TTL:
+            logger.info(f"Возвращаем кэшированные диалоги для пользователя {user_id}")
             return cached_dialogs
         else:
-            logger.info(f"Кэш диалогов устарел для пользователя {user_id} (возраст: {elapsed:.2f} сек)")
-    
+            logger.info(f"Кэш диалогов для пользователя {user_id} устарел")
+
     try:
-        # Получаем клиент
-        logger.info(f"Пытаемся получить клиент для пользователя {user_id}")
+        # Получаем клиент Telegram
         client = await get_client(user_id)
         
-        # Подключаемся к Telegram, если не подключены
-        logger.info(f"Проверяем подключение клиента")
-        if not client.is_connected():
-            logger.info(f"Клиент не подключен, подключаемся")
-            await client.connect()
-        
-        # Соблюдаем ограничения на частоту запросов
+        # Ждем ограничения запросов
         await wait_for_request_limit(user_id)
         
         # Получаем диалоги
-        logger.info(f"Запрашиваем диалоги с лимитом {limit}")
-        try:
-            dialogs = await client.get_dialogs(limit=limit)
-            logger.info(f"Получено {len(dialogs)} диалогов")
-        except FloodWaitError as e:
-            # Если превышен лимит запросов, сообщаем пользователю, сколько нужно подождать
-            logger.error(f"Превышен лимит запросов к API Telegram: {str(e)}")
-            raise ValueError(f"Превышен лимит запросов к API Telegram. Пожалуйста, подождите {e.seconds} секунд и попробуйте снова.")
-        except UserDeactivatedBanError:
-            logger.error(f"Аккаунт заблокирован Telegram")
-            raise ValueError("Ваш аккаунт Telegram заблокирован. Пожалуйста, обратитесь в поддержку Telegram.")
-        except Exception as e:
-            logger.error(f"Ошибка при получении диалогов: {str(e)}")
-            raise ValueError(f"Ошибка при получении диалогов: {str(e)}")
+        logger.info(f"Получаем диалоги для пользователя {user_id}")
+        dialogs = await client.get_dialogs()
         
-        # Форматируем результат
+        # Преобразуем диалоги в список словарей
         result = []
         for dialog in dialogs:
-            entity = dialog.entity
-            
-            # Определяем тип диалога
-            dialog_type = "user"
-            if hasattr(entity, "megagroup") and entity.megagroup:
-                dialog_type = "group"
-            elif hasattr(entity, "broadcast") and entity.broadcast:
-                dialog_type = "channel"
-            elif hasattr(entity, "gigagroup") and entity.gigagroup:
-                dialog_type = "supergroup"
-            
-            # Получаем имя диалога
-            name = ""
-            if hasattr(entity, "title"):
-                name = entity.title
-            elif hasattr(entity, "first_name"):
-                name = entity.first_name
-                if hasattr(entity, "last_name") and entity.last_name:
-                    name += f" {entity.last_name}"
-            
-            # Получаем последнее сообщение
-            last_message = ""
-            last_message_date = None
-            if dialog.message:
-                last_message = dialog.message.message
-                last_message_date = dialog.message.date.isoformat()
-            
-            # Добавляем диалог в результат
-            result.append({
+            dialog_dict = {
                 "id": dialog.id,
-                "title": name,
-                "type": dialog_type,
-                "last_message": last_message,
-                "last_message_date": last_message_date,
-                "unread_count": dialog.unread_count
-            })
+                "title": dialog.title or dialog.name or "Без названия",
+                "type": str(dialog.entity_type) if hasattr(dialog, 'entity_type') else "unknown",
+                "unread_count": dialog.unread_count if hasattr(dialog, 'unread_count') else 0,
+            }
+            
+            # Добавляем последнее сообщение, если оно есть
+            if hasattr(dialog, 'message') and dialog.message:
+                dialog_dict["last_message"] = dialog.message.message if hasattr(dialog.message, 'message') else ""
+                dialog_dict["last_message_date"] = dialog.message.date.isoformat() if hasattr(dialog.message, 'date') else ""
+            
+            # Добавляем фото профиля, если оно есть
+            try:
+                if hasattr(dialog, 'entity') and dialog.entity:
+                    entity = dialog.entity
+                    if hasattr(entity, 'photo') and entity.photo:
+                        # Здесь можно добавить логику для получения URL фото
+                        pass
+            except Exception as e:
+                logger.warning(f"Ошибка при получении фото для диалога {dialog.id}: {e}")
+            
+            result.append(dialog_dict)
         
         # Сохраняем результат в кэш
         dialogs_cache[user_id] = (result, time.time())
         
-        logger.info(f"Возвращаем {len(result)} диалогов и обновляем кэш")
+        logger.info(f"Получено {len(result)} диалогов для пользователя {user_id}")
         return result
     except Exception as e:
-        logger.error(f"Ошибка при получении диалогов: {str(e)}")
-        # Вместо возврата тестовых данных, выбрасываем исключение
-        raise ValueError(f"Ошибка при получении диалогов: {str(e)}")
+        logger.error(f"Ошибка при получении диалогов для пользователя {user_id}: {e}")
+        
+        # Собираем подробную информацию об ошибке
+        session_file = f"app/sessions/user_{user_id}.session"
+        session_exists = os.path.exists(session_file)
+        sessions_dir = "app/sessions"
+        sessions_list = os.listdir(sessions_dir) if os.path.exists(sessions_dir) else []
+        
+        error_message = f"Ошибка при получении диалогов: {str(e)}. "
+        error_message += f"Пользователь: {user_id}. "
+        error_message += f"Время: {datetime.now().isoformat()}. "
+        error_message += f"Сессия: {session_file}. "
+        error_message += f"Сессия существует: {session_exists}. "
+        error_message += f"Содержимое директории сессий: {', '.join(sessions_list)}."
+        
+        # Проверяем тип ошибки
+        if "FloodWaitError" in str(e):
+            raise ValueError(f"Превышен лимит запросов к API Telegram: {str(e)}")
+        elif "UserDeactivatedBanError" in str(e) or "UserBannedInChannelError" in str(e):
+            raise ValueError(f"Аккаунт заблокирован Telegram: {str(e)}")
+        elif "AuthKeyUnregisteredError" in str(e) or "AuthKeyError" in str(e):
+            raise ValueError(f"Сессия для пользователя {user_id} не найдена или недействительна: {str(e)}")
+        elif "SessionPasswordNeededError" in str(e):
+            raise ValueError(f"Требуется пароль двухфакторной аутентификации: {str(e)}")
+        else:
+            # Выбрасываем исключение с подробной информацией
+            raise ValueError(error_message)
 
 
 async def get_test_dialogs(user_id: str) -> List[Dict[str, Any]]:
