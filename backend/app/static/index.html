@@ -414,7 +414,10 @@
             
             fetch(url, {
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
                 }
             })
             .then(response => {
@@ -668,14 +671,17 @@
             messagesList.innerHTML = '<div class="loading">Загрузка сообщений...</div>';
             
             try {
-                // Формируем URL с параметрами
-                const url = `/api/v1/messages/${dialogId}?limit=50&offset=0`;
+                // Формируем URL с параметрами - добавляем force_refresh=true
+                const url = `/api/v1/messages/${dialogId}?limit=50&offset=0&force_refresh=true`;
                 
                 console.log(`Загрузка сообщений с URL: ${url}`);
                 
                 const response = await fetch(url, {
                     headers: {
-                        'Authorization': `Bearer ${token}`
+                        'Authorization': `Bearer ${token}`,
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
                     }
                 });
                 
@@ -1333,8 +1339,9 @@
                     return;
                 }
                 
-                // Формируем URL с параметрами
-                const url = `/api/v1/messages/${currentDialogId}?limit=50&offset=0`;
+                // Формируем URL с параметрами - используем force_refresh=true для получения актуальных данных
+                const url = `/api/v1/messages/${currentDialogId}?limit=50&offset=0&force_refresh=true`;
+                console.log('Проверка новых сообщений:', url);
                 
                 const response = await fetch(url, {
                     headers: {
@@ -1365,11 +1372,13 @@
                 }
                 
                 if (!response.ok) {
+                    console.error('Ошибка при проверке сообщений:', response.status, response.statusText);
                     isCheckingForUpdates = false;
                     return;
                 }
                 
                 const messages = await response.json();
+                console.log('Получено сообщений при проверке:', messages.length);
                 
                 // Если нет сообщений или нет изменений, выходим
                 if (messages.length === 0 || !lastMessages || lastMessages.length === 0) {
@@ -1386,6 +1395,7 @@
                 
                 // Проверяем количество сообщений
                 if (messages.length !== lastMessages.length) {
+                    console.log('Изменилось количество сообщений:', messages.length, lastMessages.length);
                     hasNewMessages = true;
                 } else {
                     // Проверяем последнее сообщение
@@ -1393,6 +1403,10 @@
                     const prevLastMessage = lastMessages[lastMessages.length - 1];
                     
                     if (lastMessage.id !== prevLastMessage.id) {
+                        console.log('Изменился ID последнего сообщения:', lastMessage.id, prevLastMessage.id);
+                        hasNewMessages = true;
+                    } else if (lastMessage.text !== prevLastMessage.text) {
+                        console.log('Изменился текст последнего сообщения:', lastMessage.text, prevLastMessage.text);
                         hasNewMessages = true;
                     }
                 }
@@ -1402,6 +1416,8 @@
                     isCheckingForUpdates = false;
                     return;
                 }
+                
+                console.log('Обнаружены новые сообщения, обновляем список');
                 
                 // Обновляем список последних сообщений
                 lastMessages = [...messages];
@@ -1437,8 +1453,9 @@
                     return;
                 }
                 
-                // Формируем URL с параметрами
-                const url = `/api/v1/dialogs?force_refresh=false`;
+                // Формируем URL с параметрами - используем force_refresh=true для получения актуальных данных
+                const url = `/api/v1/dialogs?force_refresh=true`;
+                console.log('Проверка новых диалогов:', url);
                 
                 const response = await fetch(url, {
                     headers: {
@@ -1469,11 +1486,13 @@
                 }
                 
                 if (!response.ok) {
+                    console.error('Ошибка при проверке диалогов:', response.status, response.statusText);
                     isCheckingForUpdates = false;
                     return;
                 }
                 
                 const dialogs = await response.json();
+                console.log('Получено диалогов при проверке:', dialogs.length);
                 
                 // Если нет диалогов или нет изменений, выходим
                 if (dialogs.length === 0 || !lastDialogs || lastDialogs.length === 0) {
@@ -1490,6 +1509,7 @@
                 
                 // Проверяем количество диалогов
                 if (dialogs.length !== lastDialogs.length) {
+                    console.log('Изменилось количество диалогов:', dialogs.length, lastDialogs.length);
                     hasChanges = true;
                 } else {
                     // Проверяем изменения в последних сообщениях
@@ -1497,10 +1517,31 @@
                         const dialog = dialogs[i];
                         const lastDialog = lastDialogs[i];
                         
-                        if (dialog.id !== lastDialog.id || 
-                            dialog.unread_count !== lastDialog.unread_count ||
-                            (dialog.last_message && lastDialog.last_message && 
-                             dialog.last_message.id !== lastDialog.last_message.id)) {
+                        // Проверяем ID диалога
+                        if (dialog.id !== lastDialog.id) {
+                            console.log('Изменился ID диалога:', dialog.id, lastDialog.id);
+                            hasChanges = true;
+                            break;
+                        }
+                        
+                        // Проверяем количество непрочитанных сообщений
+                        if (dialog.unread_count !== lastDialog.unread_count) {
+                            console.log('Изменилось количество непрочитанных сообщений:', dialog.unread_count, lastDialog.unread_count);
+                            hasChanges = true;
+                            break;
+                        }
+                        
+                        // Проверяем последнее сообщение
+                        if (dialog.last_message && lastDialog.last_message) {
+                            // Если есть последние сообщения, сравниваем их ID
+                            if (dialog.last_message !== lastDialog.last_message) {
+                                console.log('Изменилось последнее сообщение:', dialog.last_message, lastDialog.last_message);
+                                hasChanges = true;
+                                break;
+                            }
+                        } else if (dialog.last_message || lastDialog.last_message) {
+                            // Если у одного диалога есть последнее сообщение, а у другого нет
+                            console.log('Появилось или исчезло последнее сообщение');
                             hasChanges = true;
                             break;
                         }
@@ -1512,6 +1553,8 @@
                     isCheckingForUpdates = false;
                     return;
                 }
+                
+                console.log('Обнаружены изменения в диалогах, обновляем список');
                 
                 // Обновляем список последних диалогов
                 lastDialogs = [...dialogs];
