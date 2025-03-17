@@ -546,6 +546,9 @@
             .then(dialogs => {
                 console.log(`Получено диалогов: ${dialogs.length}`);
                 
+                // Сохраняем диалоги в глобальной переменной
+                lastDialogs = [...dialogs];
+                
                 // Скрываем индикатор загрузки
                 if (loading) {
                     loading.style.display = 'none';
@@ -759,6 +762,9 @@
                 
                 const messages = await response.json();
                 console.log(`Получено сообщений: ${messages.length}`);
+                
+                // Сохраняем сообщения в глобальной переменной
+                lastMessages = [...messages];
                 
                 // Очищаем список сообщений
                 messagesList.innerHTML = '';
@@ -1242,91 +1248,202 @@
         
         // Глобальная переменная для хранения ID текущего диалога
         let currentDialogId = null;
+        let lastDialogs = []; // Для хранения последних загруженных диалогов
+        let lastMessages = []; // Для хранения последних загруженных сообщений
+        let isCheckingForUpdates = false; // Флаг для предотвращения параллельных запросов
         
-        // Инициализация при загрузке страницы
-        document.addEventListener('DOMContentLoaded', function() {
-            // Инициализируем приложение
-            initApp();
-            
-            // Инициализируем авторизацию по телефону
-            initPhoneAuth();
-            
-            // Обработчики событий для кнопок отладки
-            const setWebhookButton = document.getElementById('set-webhook-button');
-            if (setWebhookButton) {
-                setWebhookButton.addEventListener('click', async function() {
-                    try {
-                        const webhookUrl = document.getElementById('webhook-url').value;
-                        
-                        const response = await fetch('/set-webhook', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                webhook_url: webhookUrl
-                            })
-                        });
-                        
-                        const data = await response.json();
-                        alert(`Вебхук установлен: ${JSON.stringify(data)}`);
-                    } catch (error) {
-                        console.error('Ошибка при установке вебхука:', error);
-                        alert(`Ошибка при установке вебхука: ${error.message}`);
-                    }
-                });
+        // Функция для запуска периодической проверки обновлений
+        function startUpdateChecking() {
+            // Проверяем наличие токена перед запуском проверки
+            const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+            if (!token) {
+                console.log('Нет токена авторизации, проверка обновлений не запущена');
+                return;
             }
             
-            const deleteWebhookButton = document.getElementById('delete-webhook-button');
-            if (deleteWebhookButton) {
-                deleteWebhookButton.addEventListener('click', async function() {
-                    try {
-                        const response = await fetch('/delete-webhook', {
-                            method: 'POST'
-                        });
-                        
-                        const data = await response.json();
-                        alert(`Вебхук удален: ${JSON.stringify(data)}`);
-                    } catch (error) {
-                        console.error('Ошибка при удалении вебхука:', error);
-                        alert(`Ошибка при удалении вебхука: ${error.message}`);
+            console.log('Запущена периодическая проверка обновлений');
+            
+            setInterval(() => {
+                const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+                if (!token) return;
+                
+                // Если открыт диалог, проверяем новые сообщения
+                if (currentDialogId) {
+                    checkForNewMessages();
+                } else {
+                    // Иначе проверяем новые диалоги
+                    checkForNewDialogs();
+                }
+            }, 5000); // Проверка каждые 5 секунд
+        }
+        
+        // Функция для проверки новых сообщений
+        async function checkForNewMessages() {
+            if (isCheckingForUpdates || !currentDialogId) return;
+            isCheckingForUpdates = true;
+            
+            try {
+                const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+                if (!token) {
+                    console.log('Нет токена авторизации, проверка сообщений отменена');
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                // Формируем URL с параметрами
+                const url = `/api/v1/messages/${currentDialogId}?limit=50&offset=0`;
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
                     }
                 });
+                
+                if (response.status === 401) {
+                    // Если требуется авторизация, не показываем ошибку в консоли
+                    console.log('Требуется авторизация в Telegram, проверка сообщений отменена');
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                if (!response.ok) {
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                const messages = await response.json();
+                
+                // Если нет сообщений или нет изменений, выходим
+                if (messages.length === 0 || !lastMessages || lastMessages.length === 0) {
+                    // Если это первая загрузка, сохраняем сообщения
+                    if (!lastMessages || lastMessages.length === 0) {
+                        lastMessages = [...messages];
+                    }
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                // Проверяем, есть ли новые сообщения
+                let hasNewMessages = false;
+                
+                // Проверяем количество сообщений
+                if (messages.length !== lastMessages.length) {
+                    hasNewMessages = true;
+                } else {
+                    // Проверяем последнее сообщение
+                    const lastMessage = messages[messages.length - 1];
+                    const prevLastMessage = lastMessages[lastMessages.length - 1];
+                    
+                    if (lastMessage.id !== prevLastMessage.id) {
+                        hasNewMessages = true;
+                    }
+                }
+                
+                // Если нет новых сообщений, выходим
+                if (!hasNewMessages) {
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                // Обновляем список последних сообщений
+                lastMessages = [...messages];
+                
+                // Обновляем интерфейс - перезагружаем сообщения
+                await loadMessages(currentDialogId, document.getElementById('current-dialog-header').textContent);
+                
+            } catch (error) {
+                console.error('Ошибка при проверке новых сообщений:', error);
+            } finally {
+                isCheckingForUpdates = false;
             }
+        }
+        
+        // Функция для проверки новых диалогов
+        async function checkForNewDialogs() {
+            if (isCheckingForUpdates || currentDialogId) return;
+            isCheckingForUpdates = true;
             
-            const sendTestMessageButton = document.getElementById('send-test-message-button');
-            if (sendTestMessageButton) {
-                sendTestMessageButton.addEventListener('click', async function() {
-                    try {
-                        const chatId = document.getElementById('chat-id').value;
+            try {
+                const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+                if (!token) {
+                    console.log('Нет токена авторизации, проверка диалогов отменена');
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                // Формируем URL с параметрами
+                const url = `/api/v1/dialogs?force_refresh=false`;
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.status === 401) {
+                    // Если требуется авторизация, не показываем ошибку в консоли
+                    console.log('Требуется авторизация в Telegram, проверка диалогов отменена');
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                if (!response.ok) {
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                const dialogs = await response.json();
+                
+                // Если нет диалогов или нет изменений, выходим
+                if (dialogs.length === 0 || !lastDialogs || lastDialogs.length === 0) {
+                    // Если это первая загрузка, сохраняем диалоги
+                    if (!lastDialogs || lastDialogs.length === 0) {
+                        lastDialogs = [...dialogs];
+                    }
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                // Проверяем, есть ли изменения в диалогах
+                let hasChanges = false;
+                
+                // Проверяем количество диалогов
+                if (dialogs.length !== lastDialogs.length) {
+                    hasChanges = true;
+                } else {
+                    // Проверяем изменения в последних сообщениях
+                    for (let i = 0; i < dialogs.length; i++) {
+                        const dialog = dialogs[i];
+                        const lastDialog = lastDialogs[i];
                         
-                        if (!chatId) {
-                            alert('Пожалуйста, введите ID чата');
-                            return;
+                        if (dialog.id !== lastDialog.id || 
+                            dialog.unread_count !== lastDialog.unread_count ||
+                            (dialog.last_message && lastDialog.last_message && 
+                             dialog.last_message.id !== lastDialog.last_message.id)) {
+                            hasChanges = true;
+                            break;
                         }
-                        
-                        const response = await fetch('/send-test-message', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                chat_id: chatId
-                            })
-                        });
-                        
-                        const data = await response.json();
-                        alert(`Сообщение отправлено: ${JSON.stringify(data)}`);
-                    } catch (error) {
-                        console.error('Ошибка при отправке тестового сообщения:', error);
-                        alert(`Ошибка при отправке тестового сообщения: ${error.message}`);
                     }
-                });
+                }
+                
+                // Если нет изменений, выходим
+                if (!hasChanges) {
+                    isCheckingForUpdates = false;
+                    return;
+                }
+                
+                // Обновляем список последних диалогов
+                lastDialogs = [...dialogs];
+                
+                // Обновляем интерфейс - перезагружаем диалоги
+                loadDialogs(false);
+                
+            } catch (error) {
+                console.error('Ошибка при проверке новых диалогов:', error);
+            } finally {
+                isCheckingForUpdates = false;
             }
-            
-            // Проверяем авторизацию и загружаем диалоги, если пользователь авторизован
-            updateUI();
-        });
+        }
         
         // Функция для ручной авторизации
         async function manualAuth(userId) {
@@ -1547,6 +1664,9 @@
                 
                 // Загружаем диалоги
                 loadDialogs();
+                
+                // Запускаем проверку обновлений
+                startUpdateChecking();
             } else {
                 // Пользователь не авторизован
                 if (authSection) authSection.style.display = 'block';
@@ -1851,6 +1971,94 @@
             
             authDebugInfo.innerHTML = debugHtml;
         }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            // Инициализируем приложение
+            initApp();
+            
+            // Инициализируем авторизацию по телефону
+            initPhoneAuth();
+            
+            // Обработчики событий для кнопок отладки
+            const setWebhookButton = document.getElementById('set-webhook-button');
+            if (setWebhookButton) {
+                setWebhookButton.addEventListener('click', async function() {
+                    try {
+                        const webhookUrl = document.getElementById('webhook-url').value;
+                        
+                        const response = await fetch('/set-webhook', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                webhook_url: webhookUrl
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        alert(`Вебхук установлен: ${JSON.stringify(data)}`);
+                    } catch (error) {
+                        console.error('Ошибка при установке вебхука:', error);
+                        alert(`Ошибка при установке вебхука: ${error.message}`);
+                    }
+                });
+            }
+            
+            const deleteWebhookButton = document.getElementById('delete-webhook-button');
+            if (deleteWebhookButton) {
+                deleteWebhookButton.addEventListener('click', async function() {
+                    try {
+                        const response = await fetch('/delete-webhook', {
+                            method: 'POST'
+                        });
+                        
+                        const data = await response.json();
+                        alert(`Вебхук удален: ${JSON.stringify(data)}`);
+                    } catch (error) {
+                        console.error('Ошибка при удалении вебхука:', error);
+                        alert(`Ошибка при удалении вебхука: ${error.message}`);
+                    }
+                });
+            }
+            
+            const sendTestMessageButton = document.getElementById('send-test-message-button');
+            if (sendTestMessageButton) {
+                sendTestMessageButton.addEventListener('click', async function() {
+                    try {
+                        const chatId = document.getElementById('test-chat-id').value;
+                        
+                        if (!chatId) {
+                            alert('Пожалуйста, введите ID чата');
+                            return;
+                        }
+                        
+                        const response = await fetch('/send-test-message', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                chat_id: chatId
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        alert(`Сообщение отправлено: ${JSON.stringify(data)}`);
+                    } catch (error) {
+                        console.error('Ошибка при отправке тестового сообщения:', error);
+                        alert(`Ошибка при отправке тестового сообщения: ${error.message}`);
+                    }
+                });
+            }
+            
+            // Проверяем авторизацию и загружаем диалоги, если пользователь авторизован
+            updateUI();
+            
+            // Запускаем проверку обновлений
+            startUpdateChecking();
+        });
     </script>
 
     <script src="/static/js/app.js"></script>
