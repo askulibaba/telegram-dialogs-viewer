@@ -541,15 +541,17 @@ footer .container {
 /* Стили для сообщений в стиле Telegram */
 #messages-section {
     display: none;
-    margin-top: 20px;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
 }
 
 .messages-header {
     display: flex;
     align-items: center;
-    padding: 12px 16px;
-    background-color: #5682a3;
-    color: white;
+    padding: 16px;
+    background-color: #f5f7fb;
+    border-bottom: 1px solid #e0e0e0;
     border-radius: 8px 8px 0 0;
 }
 
@@ -710,4 +712,33 @@ footer .container {
     .messages-container {
         max-height: 400px;
     }
+}
+
+/* Стили для контейнера ключа Энигмы */
+.enigma-key-container {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    background-color: #f5f7fb;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.enigma-key-container label {
+    font-weight: bold;
+    margin-right: 10px;
+}
+
+.enigma-key-input {
+    width: 120px;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    text-transform: uppercase;
+}
+
+.key-validation-message {
+    margin-left: 10px;
+    font-size: 12px;
+    color: red;
 } 

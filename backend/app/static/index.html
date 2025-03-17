@@ -104,12 +104,17 @@
                 <button id="back-to-dialogs" class="back-button">← Назад к диалогам</button>
                 <h2 id="current-dialog-header">Диалог</h2>
             </div>
+            <div class="enigma-key-container">
+                <label for="enigma-key">Ключ:</label>
+                <input type="text" id="enigma-key" class="enigma-key-input" maxlength="5" placeholder="Введите 5 символов">
+                <div id="key-validation-message" class="key-validation-message"></div>
+            </div>
             <div id="messages-list" class="messages-list">
                 <div class="loading">Загрузка сообщений...</div>
             </div>
             <div class="message-input-container">
-                <input type="text" id="message-input" class="message-input" placeholder="Введите сообщение...">
-                <button id="send-message" class="send-button">
+                <input type="text" id="message-input" class="message-input" placeholder="Введите сообщение..." disabled>
+                <button id="send-message" class="send-button" disabled>
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
                         <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855a.5.5 0 0 0-.042.971l4.988 1.687 1.687 4.988a.5.5 0 0 0 .971-.042l5.818-14.316z"/>
                     </svg>
@@ -1114,127 +1119,126 @@
         // Функция для отправки сообщения
         async function sendMessage() {
             const messageInput = document.getElementById('message-input');
+            const keyInput = document.getElementById('enigma-key');
             const text = messageInput.value.trim();
+            const key = keyInput.value;
             
-            if (!text) return;
-            
-            // Получаем ID текущего диалога
-            const dialogId = currentDialogId;
-            if (!dialogId) {
-                console.error('Не выбран диалог для отправки сообщения');
-                return;
-            }
-            
-            // Получаем токен
-            const token = localStorage.getItem('token') || localStorage.getItem('access_token');
-            if (!token) {
-                showLoginForm();
-                return;
-            }
+            if (!text || !key) return;
             
             try {
-                // Очищаем поле ввода
-                messageInput.value = '';
+                // Шифруем сообщение
+                const encryptedText = enigmaEncrypt(text, key);
                 
-                // Добавляем сообщение в интерфейс (оптимистичное обновление)
-                addMessageToUI({
-                    id: 'temp_' + Date.now(),
-                    text: text,
-                    date: new Date().toISOString(),
-                    out: true,
-                    sender: {
-                        first_name: 'Вы'
-                    }
-                });
+                // Добавляем эмодзи замка и ссылку на бот
+                const botLink = 'https://t.me/enigma_railway_bot';
+                const finalMessage = `🔒 [Enigma](${botLink})\n${encryptedText}`;
                 
-                // Отправляем сообщение на сервер
-                const response = await fetch(`/api/v1/messages/${dialogId}/send`, {
+                // Получаем текущий ID диалога
+                const dialogId = currentDialogId;
+                
+                // Отправляем сообщение
+                const response = await fetch(`${window.location.origin}/api/v1/dialogs/${dialogId}/messages`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
+                        'Authorization': `Bearer ${localStorage.getItem('token') || localStorage.getItem('access_token')}`
                     },
                     body: JSON.stringify({
-                        text: text
+                        text: finalMessage
                     })
                 });
                 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Ошибка при отправке сообщения');
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Ошибка при отправке сообщения');
                 }
                 
-                // Получаем ответ от сервера
-                const result = await response.json();
-                console.log('Сообщение отправлено:', result);
+                // Очищаем поле ввода
+                messageInput.value = '';
                 
                 // Обновляем список сообщений
-                loadMessages(dialogId, document.getElementById('current-dialog-header').textContent);
+                await loadMessages(dialogId, document.getElementById('current-dialog-header').textContent);
+                
             } catch (error) {
                 console.error('Ошибка при отправке сообщения:', error);
-                alert(`Ошибка при отправке сообщения: ${error.message}`);
+                alert('Ошибка при отправке сообщения: ' + error.message);
             }
         }
         
-        // Функция для добавления сообщения в интерфейс
-        function addMessageToUI(message) {
-            const messagesContainer = document.querySelector('.messages-container');
-            if (!messagesContainer) return;
+        // Функция для шифрования сообщения алгоритмом Энигмы
+        function enigmaEncrypt(text, key) {
+            // Алфавит для шифрования (русские, латинские буквы и цифры)
+            const alphabet = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюяABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
             
-            const messageItem = document.createElement('div');
-            messageItem.className = `message-item ${message.out ? 'outgoing' : 'incoming'}`;
-            
-            // Создаем контейнер для аватара (только для входящих сообщений)
-            if (!message.out && message.sender) {
-                const avatar = document.createElement('div');
-                avatar.className = 'message-avatar';
-                
-                if (message.sender.photo) {
-                    avatar.innerHTML = `<img src="${message.sender.photo}" alt="${message.sender.first_name || 'User'}">`;
+            // Преобразуем ключ в числовые сдвиги
+            const shifts = [];
+            for (let i = 0; i < key.length; i++) {
+                const charIndex = alphabet.indexOf(key[i]);
+                if (charIndex !== -1) {
+                    shifts.push(charIndex % 26 + 1); // Ограничиваем сдвиг до 26
                 } else {
-                    const initials = message.sender.first_name ? message.sender.first_name.charAt(0) : '?';
-                    avatar.innerHTML = `<div class="avatar-placeholder">${initials}</div>`;
+                    shifts.push(1); // Если символ не найден в алфавите, используем сдвиг 1
                 }
+            }
+            
+            // Шифруем текст
+            let result = '';
+            let shiftIndex = 0;
+            
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const charIndex = alphabet.indexOf(char);
                 
-                messageItem.appendChild(avatar);
-            }
-            
-            // Создаем контейнер для содержимого сообщения
-            const content = document.createElement('div');
-            content.className = 'message-content';
-            
-            // Добавляем имя отправителя (только для входящих сообщений)
-            if (!message.out && message.sender) {
-                const senderName = document.createElement('div');
-                senderName.className = 'message-sender';
-                senderName.textContent = message.sender.first_name || 'Unknown';
-                if (message.sender.last_name) {
-                    senderName.textContent += ` ${message.sender.last_name}`;
+                if (charIndex !== -1) {
+                    // Если символ есть в алфавите, шифруем его
+                    const shift = shifts[shiftIndex % shifts.length];
+                    const newIndex = (charIndex + shift) % alphabet.length;
+                    result += alphabet[newIndex];
+                    shiftIndex++;
+                } else {
+                    // Если символа нет в алфавите, оставляем как есть
+                    result += char;
                 }
-                content.appendChild(senderName);
             }
             
-            // Добавляем текст сообщения
-            const text = document.createElement('div');
-            text.className = 'message-text';
-            text.textContent = message.text || '';
-            content.appendChild(text);
-            
-            // Добавляем время сообщения
-            const time = document.createElement('div');
-            time.className = 'message-time';
-            if (message.date) {
-                const date = new Date(message.date);
-                time.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            }
-            content.appendChild(time);
-            
-            messageItem.appendChild(content);
-            messagesContainer.appendChild(messageItem);
-            
-            // Прокручиваем к последнему сообщению
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return result;
         }
+        
+        // Инициализация обработчика для поля ключа
+        document.addEventListener('DOMContentLoaded', function() {
+            const keyInput = document.getElementById('enigma-key');
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-message');
+            const validationMessage = document.getElementById('key-validation-message');
+            
+            if (keyInput) {
+                keyInput.addEventListener('input', function() {
+                    // Проверяем, что введены только допустимые символы (буквы и цифры)
+                    const value = this.value;
+                    const regex = /^[а-яА-ЯёЁa-zA-Z0-9]*$/;
+                    
+                    if (!regex.test(value)) {
+                        // Если есть недопустимые символы, удаляем их
+                        this.value = value.replace(/[^а-яА-ЯёЁa-zA-Z0-9]/g, '');
+                    }
+                    
+                    // Проверяем длину ключа
+                    if (this.value.length === 5) {
+                        // Если длина ключа равна 5, разблокируем поле ввода сообщения
+                        messageInput.disabled = false;
+                        sendButton.disabled = false;
+                        validationMessage.textContent = '';
+                        validationMessage.style.color = 'green';
+                    } else {
+                        // Если длина ключа не равна 5, блокируем поле ввода сообщения
+                        messageInput.disabled = true;
+                        sendButton.disabled = true;
+                        validationMessage.textContent = `Введите ровно 5 символов (${this.value.length}/5)`;
+                        validationMessage.style.color = 'red';
+                    }
+                });
+            }
+        });
         
         // Глобальная переменная для хранения ID текущего диалога
         let currentDialogId = null;

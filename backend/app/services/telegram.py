@@ -27,10 +27,10 @@ dialogs_cache: Dict[int, Tuple[List[Dict[str, Any]], float]] = {}
 messages_cache: Dict[Tuple[int, int], Tuple[List[Dict[str, Any]], float]] = {}
 
 # Минимальный интервал между запросами (в секундах)
-MIN_REQUEST_INTERVAL = 2.0
+MIN_REQUEST_INTERVAL = 0.1
 
 # Время жизни кэша (в секундах)
-CACHE_TTL = 60.0  # 1 минута
+CACHE_TTL = 3600.0  # 1 час
 
 def ensure_sessions_dir():
     """
