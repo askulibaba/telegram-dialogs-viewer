@@ -853,10 +853,25 @@
         
         // Функция для выхода из аккаунта
         function logout() {
+            // Очищаем токены
+            localStorage.removeItem('token');
             localStorage.removeItem('access_token');
             localStorage.removeItem('user');
-            updateUI(false);
-            updateAuthDebugInfo();
+            
+            // Останавливаем проверку обновлений
+            if (window.updateCheckingIntervalId) {
+                clearInterval(window.updateCheckingIntervalId);
+                window.updateCheckingIntervalId = null;
+                console.log('Проверка обновлений остановлена при выходе из системы');
+            }
+            
+            // Сбрасываем глобальные переменные
+            currentDialogId = null;
+            lastDialogs = [];
+            lastMessages = [];
+            
+            // Показываем форму авторизации
+            showLoginForm();
         }
         
         // Объект для хранения данных авторизации по телефону
@@ -1091,7 +1106,9 @@
             initAuthTabs();
             
             // Инициализация обработчиков событий
-            document.getElementById('logout-button').addEventListener('click', logout);
+            document.getElementById('logout-button').addEventListener('click', function() {
+                logout();
+            });
             
             // Инициализация кнопки "Назад к диалогам"
             document.getElementById('back-to-dialogs').addEventListener('click', () => {
@@ -1263,9 +1280,15 @@
             
             console.log('Запущена периодическая проверка обновлений');
             
-            setInterval(() => {
-                const token = localStorage.getItem('token') || localStorage.getItem('access_token');
-                if (!token) return;
+            // Создаем интервал для проверки обновлений
+            const intervalId = setInterval(() => {
+                // Проверяем наличие токена при каждой итерации
+                const currentToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+                if (!currentToken) {
+                    console.log('Токен авторизации больше не доступен, останавливаем проверку обновлений');
+                    clearInterval(intervalId);
+                    return;
+                }
                 
                 // Если открыт диалог, проверяем новые сообщения
                 if (currentDialogId) {
@@ -1275,6 +1298,9 @@
                     checkForNewDialogs();
                 }
             }, 5000); // Проверка каждые 5 секунд
+            
+            // Сохраняем ID интервала для возможной остановки в будущем
+            window.updateCheckingIntervalId = intervalId;
         }
         
         // Функция для проверки новых сообщений
@@ -1287,6 +1313,14 @@
                 if (!token) {
                     console.log('Нет токена авторизации, проверка сообщений отменена');
                     isCheckingForUpdates = false;
+                    
+                    // Если есть активный интервал, останавливаем его
+                    if (window.updateCheckingIntervalId) {
+                        clearInterval(window.updateCheckingIntervalId);
+                        window.updateCheckingIntervalId = null;
+                        console.log('Проверка обновлений остановлена из-за отсутствия токена');
+                    }
+                    
                     return;
                 }
                 
@@ -1303,6 +1337,21 @@
                     // Если требуется авторизация, не показываем ошибку в консоли
                     console.log('Требуется авторизация в Telegram, проверка сообщений отменена');
                     isCheckingForUpdates = false;
+                    
+                    // Очищаем токен из localStorage
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('access_token');
+                    
+                    // Если есть активный интервал, останавливаем его
+                    if (window.updateCheckingIntervalId) {
+                        clearInterval(window.updateCheckingIntervalId);
+                        window.updateCheckingIntervalId = null;
+                        console.log('Проверка обновлений остановлена из-за ошибки авторизации');
+                    }
+                    
+                    // Показываем форму авторизации
+                    showLoginForm();
+                    
                     return;
                 }
                 
@@ -1368,6 +1417,14 @@
                 if (!token) {
                     console.log('Нет токена авторизации, проверка диалогов отменена');
                     isCheckingForUpdates = false;
+                    
+                    // Если есть активный интервал, останавливаем его
+                    if (window.updateCheckingIntervalId) {
+                        clearInterval(window.updateCheckingIntervalId);
+                        window.updateCheckingIntervalId = null;
+                        console.log('Проверка обновлений остановлена из-за отсутствия токена');
+                    }
+                    
                     return;
                 }
                 
@@ -1384,6 +1441,21 @@
                     // Если требуется авторизация, не показываем ошибку в консоли
                     console.log('Требуется авторизация в Telegram, проверка диалогов отменена');
                     isCheckingForUpdates = false;
+                    
+                    // Очищаем токен из localStorage
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('access_token');
+                    
+                    // Если есть активный интервал, останавливаем его
+                    if (window.updateCheckingIntervalId) {
+                        clearInterval(window.updateCheckingIntervalId);
+                        window.updateCheckingIntervalId = null;
+                        console.log('Проверка обновлений остановлена из-за ошибки авторизации');
+                    }
+                    
+                    // Показываем форму авторизации
+                    showLoginForm();
+                    
                     return;
                 }
                 
