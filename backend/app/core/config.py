@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Telegram Dialogs Viewer"
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = secrets.token_urlsafe(32)
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 дней
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 90  # 90 дней
     
     # URL приложения
     APP_URL: str = "https://web-production-921c.up.railway.app"
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     # Настройки JWT
     JWT_SECRET_KEY: str = "your-secret-key"
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 дней
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 90  # 90 дней
     
     # Настройки Railway
     IS_RAILWAY: bool = os.environ.get("RAILWAY_ENVIRONMENT") is not None
