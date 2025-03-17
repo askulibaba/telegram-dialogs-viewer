@@ -1271,6 +1271,13 @@
         
         // Функция для запуска периодической проверки обновлений
         function startUpdateChecking() {
+            // Останавливаем предыдущий интервал, если он существует
+            if (window.updateCheckingIntervalId) {
+                clearInterval(window.updateCheckingIntervalId);
+                window.updateCheckingIntervalId = null;
+                console.log('Предыдущий интервал проверки обновлений остановлен');
+            }
+            
             // Проверяем наличие токена перед запуском проверки
             const token = localStorage.getItem('token') || localStorage.getItem('access_token');
             if (!token) {
@@ -1287,6 +1294,7 @@
                 if (!currentToken) {
                     console.log('Токен авторизации больше не доступен, останавливаем проверку обновлений');
                     clearInterval(intervalId);
+                    window.updateCheckingIntervalId = null;
                     return;
                 }
                 
@@ -1301,6 +1309,7 @@
             
             // Сохраняем ID интервала для возможной остановки в будущем
             window.updateCheckingIntervalId = intervalId;
+            console.log('ID интервала проверки обновлений сохранен:', intervalId);
         }
         
         // Функция для проверки новых сообщений
